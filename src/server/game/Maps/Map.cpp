@@ -21,7 +21,6 @@
 #include "BattlegroundScript.h"
 #include "CellImpl.h"
 #include "CharacterPackets.h"
-#include "Containers.h"
 #include "Conversation.h"
 #include "DB2Stores.h"
 #include "DatabaseEnv.h"
@@ -38,6 +37,7 @@
 #include "InstanceScript.h"
 #include "Log.h"
 #include "MapManager.h"
+#include "MapUtils.h"
 #include "Metric.h"
 #include "MiscPackets.h"
 #include "MotionMaster.h"
@@ -198,52 +198,21 @@ template<class T>
 void Map::AddToGrid(T* obj, Cell const& cell)
 {
     NGridType* grid = getNGrid(cell.GridX(), cell.GridY());
-    if (obj->IsStoredInWorldObjectGridContainer())
-        grid->GetGridType(cell.CellX(), cell.CellY()).template AddWorldObject<T>(obj);
-    else
-        grid->GetGridType(cell.CellX(), cell.CellY()).template AddGridObject<T>(obj);
-}
+    if constexpr (WorldTypeMapContainer::TypeExists<T> && GridTypeMapContainer::TypeExists<T>)
+    {
+        NGridType::GridType& cellType = grid->GetGridType(cell.CellX(), cell.CellY());
+        if (obj->IsStoredInWorldObjectGridContainer())
+            cellType.AddWorldObject<T>(obj);
+        else
+            cellType.AddGridObject<T>(obj);
+    }
+    else if constexpr (WorldTypeMapContainer::TypeExists<T>)
+        grid->GetGridType(cell.CellX(), cell.CellY()).AddWorldObject<T>(obj);
+    else if constexpr (GridTypeMapContainer::TypeExists<T>)
+        grid->GetGridType(cell.CellX(), cell.CellY()).AddGridObject<T>(obj);
 
-template<>
-void Map::AddToGrid(Creature* obj, Cell const& cell)
-{
-    NGridType* grid = getNGrid(cell.GridX(), cell.GridY());
-    if (obj->IsStoredInWorldObjectGridContainer())
-        grid->GetGridType(cell.CellX(), cell.CellY()).AddWorldObject(obj);
-    else
-        grid->GetGridType(cell.CellX(), cell.CellY()).AddGridObject(obj);
-
-    obj->SetCurrentCell(cell);
-}
-
-template<>
-void Map::AddToGrid(GameObject* obj, Cell const& cell)
-{
-    NGridType* grid = getNGrid(cell.GridX(), cell.GridY());
-    grid->GetGridType(cell.CellX(), cell.CellY()).AddGridObject(obj);
-
-    obj->SetCurrentCell(cell);
-}
-
-template<>
-void Map::AddToGrid(DynamicObject* obj, Cell const& cell)
-{
-    NGridType* grid = getNGrid(cell.GridX(), cell.GridY());
-    if (obj->IsStoredInWorldObjectGridContainer())
-        grid->GetGridType(cell.CellX(), cell.CellY()).AddWorldObject(obj);
-    else
-        grid->GetGridType(cell.CellX(), cell.CellY()).AddGridObject(obj);
-
-    obj->SetCurrentCell(cell);
-}
-
-template<>
-void Map::AddToGrid(AreaTrigger* obj, Cell const& cell)
-{
-    NGridType* grid = getNGrid(cell.GridX(), cell.GridY());
-    grid->GetGridType(cell.CellX(), cell.CellY()).AddGridObject(obj);
-
-    obj->SetCurrentCell(cell);
+    if constexpr (std::is_base_of_v<MapObject, T>)
+        obj->SetCurrentCell(cell);
 }
 
 template<>
@@ -258,10 +227,11 @@ void Map::AddToGrid(Corpse* obj, Cell const& cell)
     // to avoid failing an assertion in GridObject::AddToGrid
     if (grid->isGridObjectDataLoaded())
     {
+        NGridType::GridType& cellType = grid->GetGridType(cell.CellX(), cell.CellY());
         if (obj->IsStoredInWorldObjectGridContainer())
-            grid->GetGridType(cell.CellX(), cell.CellY()).AddWorldObject(obj);
+            cellType.AddWorldObject(obj);
         else
-            grid->GetGridType(cell.CellX(), cell.CellY()).AddGridObject(obj);
+            cellType.AddGridObject(obj);
     }
 }
 
@@ -1916,6 +1886,9 @@ void Map::SendInitTransports(Player* player)
         }
     }
 
+    if (!transData.HasData())
+        return;
+
     WorldPacket packet;
     transData.BuildPacket(&packet);
     player->SendDirectMessage(&packet);
@@ -1933,6 +1906,9 @@ void Map::SendRemoveTransports(Player* player)
             player->m_visibleTransports.erase(transport->GetGUID());
         }
     }
+
+    if (!transData.HasData())
+        return;
 
     WorldPacket packet;
     transData.BuildPacket(&packet);
@@ -1963,6 +1939,9 @@ void Map::SendUpdateTransportVisibility(Player* player)
             player->m_visibleTransports.erase(transportItr);
         }
     }
+
+    if (!transData.HasData())
+        return;
 
     WorldPacket packet;
     transData.BuildPacket(&packet);
@@ -2866,9 +2845,10 @@ template TC_GAME_API void Map::RemoveFromMap(Conversation*, bool);
 
 /* ******* Dungeon Instance Maps ******* */
 
-InstanceMap::InstanceMap(uint32 id, time_t expiry, uint32 InstanceId, Difficulty SpawnMode, TeamId InstanceTeam, InstanceLock* instanceLock)
+InstanceMap::InstanceMap(uint32 id, time_t expiry, uint32 InstanceId, Difficulty SpawnMode, TeamId InstanceTeam, InstanceLock* instanceLock,
+    Optional<uint32> lfgDungeonsId)
   : Map(id, expiry, InstanceId, SpawnMode),
-    i_data(nullptr), i_script_id(0), i_scenario(nullptr), i_instanceLock(instanceLock)
+    i_data(nullptr), i_script_id(0), i_scenario(nullptr), i_instanceLock(instanceLock), i_lfgDungeonsId(lfgDungeonsId)
 {
     //lets initialize visibility distance for dungeons
     InstanceMap::InitVisibilityDistance();
@@ -4147,4 +4127,4 @@ Eluna* Map::GetEluna() const
 }
 #endif
 
-template class TC_GAME_API TypeUnorderedMapContainer<AllMapStoredObjectTypes, ObjectGuid>;
+template struct TC_GAME_API TypeListContainer<MapStoredObjectsUnorderedMap, Creature, GameObject, DynamicObject, Pet, Corpse, AreaTrigger, SceneObject, Conversation>;

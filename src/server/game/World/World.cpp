@@ -72,6 +72,7 @@
 #include "MMapFactory.h"
 #include "Map.h"
 #include "MapManager.h"
+#include "MapUtils.h"
 #include "Metric.h"
 #include "MiscPackets.h"
 #include "ObjectAccessor.h"
@@ -708,12 +709,6 @@ void World::LoadConfigSettings(bool reload)
     rate_values[RATE_AUCTION_CUT]                       = sConfigMgr->GetFloatDefault("Rate.Auction.Cut", 1.0f);
     rate_values[RATE_HONOR]                             = sConfigMgr->GetFloatDefault("Rate.Honor", 1.0f);
     rate_values[RATE_INSTANCE_RESET_TIME]               = sConfigMgr->GetFloatDefault("Rate.InstanceResetTime", 1.0f);
-    rate_values[RATE_TALENT]                            = sConfigMgr->GetFloatDefault("Rate.Talent", 1.0f);
-    if (rate_values[RATE_TALENT] < 0.0f)
-    {
-        TC_LOG_ERROR("server.loading", "Rate.Talent ({}) must be > 0. Using 1 instead.", rate_values[RATE_TALENT]);
-        rate_values[RATE_TALENT] = 1.0f;
-    }
     rate_values[RATE_MOVESPEED] = sConfigMgr->GetFloatDefault("Rate.MoveSpeed", 1.0f);
     if (rate_values[RATE_MOVESPEED] < 0)
     {
@@ -860,16 +855,9 @@ void World::LoadConfigSettings(bool reload)
         uint32 val = sConfigMgr->GetIntDefault("WorldServerPort", 8085);
         if (val != m_int_configs[CONFIG_PORT_WORLD])
             TC_LOG_ERROR("server.loading", "WorldServerPort option can't be changed at worldserver.conf reload, using current value ({}).", m_int_configs[CONFIG_PORT_WORLD]);
-
-        val = sConfigMgr->GetIntDefault("InstanceServerPort", 8086);
-        if (val != m_int_configs[CONFIG_PORT_INSTANCE])
-            TC_LOG_ERROR("server.loading", "InstanceServerPort option can't be changed at worldserver.conf reload, using current value ({}).", m_int_configs[CONFIG_PORT_INSTANCE]);
     }
     else
-    {
         m_int_configs[CONFIG_PORT_WORLD] = sConfigMgr->GetIntDefault("WorldServerPort", 8085);
-        m_int_configs[CONFIG_PORT_INSTANCE] = sConfigMgr->GetIntDefault("InstanceServerPort", 8086);
-    }
 
     // Config values are in "milliseconds" but we handle SocketTimeOut only as "seconds" so divide by 1000
     m_int_configs[CONFIG_SOCKET_TIMEOUTTIME] = sConfigMgr->GetIntDefault("SocketTimeOutTime", 900000) / 1000;
@@ -1054,7 +1042,7 @@ void World::LoadConfigSettings(bool reload)
         m_int_configs[CONFIG_START_DEMON_HUNTER_PLAYER_LEVEL] = m_int_configs[CONFIG_MAX_PLAYER_LEVEL];
     }
 
-    m_int_configs[CONFIG_START_EVOKER_PLAYER_LEVEL] = sConfigMgr->GetIntDefault("StartEvokerPlayerLevel", 58);
+    m_int_configs[CONFIG_START_EVOKER_PLAYER_LEVEL] = sConfigMgr->GetIntDefault("StartEvokerPlayerLevel", 10);
     if (m_int_configs[CONFIG_START_EVOKER_PLAYER_LEVEL] < 1)
     {
         TC_LOG_ERROR("server.loading", "StartEvokerPlayerLevel ({}) must be in range 1..MaxPlayerLevel({}). Set to 1.",
@@ -1741,25 +1729,6 @@ void World::LoadConfigSettings(bool reload)
     // Loading of Locales
     m_bool_configs[CONFIG_LOAD_LOCALES] = sConfigMgr->GetBoolDefault("Load.Locales", true);
 
-    // Advanced flying
-    m_float_configs[CONFIG_ADV_FLY_AIR_FRICTION] = sConfigMgr->GetFloatDefault("AdvFly.AirFriction", 1.5f);
-    m_float_configs[CONFIG_ADV_FLY_MAX_VEL] = sConfigMgr->GetFloatDefault("AdvFly.MaxVel", 65.0f);
-    m_float_configs[CONFIG_ADV_FLY_LIFT_COEF] = sConfigMgr->GetFloatDefault("AdvFly.LiftCoef", 0.7f);
-    m_float_configs[CONFIG_ADV_FLY_DOUBLE_JUMP_VEL_MOD] = sConfigMgr->GetFloatDefault("AdvFly.DoubleJumpVelMod", 5.0f);
-    m_float_configs[CONFIG_ADV_FLY_GLIDE_START_MIN_HEIGHT] = sConfigMgr->GetFloatDefault("AdvFly.GlideStartMinHeight", 7.5f);
-    m_float_configs[CONFIG_ADV_FLY_ADD_IMPULSE_MAX_SPEED] = sConfigMgr->GetFloatDefault("AdvFly.AddImpulseMaxSpeed", 100.0f);
-    m_float_configs[CONFIG_ADV_FLY_MIN_BANKING_RATE] = sConfigMgr->GetFloatDefault("AdvFly.MinBankingRate", 140.0f);
-    m_float_configs[CONFIG_ADV_FLY_MAX_BANKING_RATE] = sConfigMgr->GetFloatDefault("AdvFly.MaxBankingRate", 270.0f);
-    m_float_configs[CONFIG_ADV_FLY_MIN_PITCHING_RATE_DOWN] = sConfigMgr->GetFloatDefault("AdvFly.MinPitchingRateDown", 180.0f);
-    m_float_configs[CONFIG_ADV_FLY_MAX_PITCHING_RATE_DOWN] = sConfigMgr->GetFloatDefault("AdvFly.MaxPitchingRateDown", 360.0f);
-    m_float_configs[CONFIG_ADV_FLY_MIN_PITCHING_RATE_UP] = sConfigMgr->GetFloatDefault("AdvFly.MinPitchingRateUp", 180.0f);
-    m_float_configs[CONFIG_ADV_FLY_MAX_PITCHING_RATE_UP] = sConfigMgr->GetFloatDefault("AdvFly.MaxPitchingRateUp", 360.0f);
-    m_float_configs[CONFIG_ADV_FLY_MIN_TURN_VELOCITY_THRESHOLD] = sConfigMgr->GetFloatDefault("AdvFly.MinTurnVelocityThreshold", 45.0f);
-    m_float_configs[CONFIG_ADV_FLY_MAX_TURN_VELOCITY_THRESHOLD] = sConfigMgr->GetFloatDefault("AdvFly.MaxTurnVelocityThreshold", 65.0f);
-    m_float_configs[CONFIG_ADV_FLY_SURFACE_FRICTION] = sConfigMgr->GetFloatDefault("AdvFly.SurfaceFriction", 2.75f);
-    m_float_configs[CONFIG_ADV_FLY_OVER_MAX_DECELERATION] = sConfigMgr->GetFloatDefault("AdvFly.OverMaxDeceleration", 7.0f);
-    m_float_configs[CONFIG_ADV_FLY_LAUNCH_SPEED_COEFFICIENT] = sConfigMgr->GetFloatDefault("AdvFly.LaunchSpeedCoefficient", 0.4f);
-
     // call ScriptMgr if we're reloading the configuration
     if (reload)
         sScriptMgr->OnConfigLoad(reload);
@@ -1842,6 +1811,13 @@ bool World::SetInitialWorldSettings()
 
     LoginDatabase.PExecute("UPDATE realmlist SET icon = {}, timezone = {} WHERE id = '{}'", server_type, realm_zone, sRealmList->GetCurrentRealmId().Realm);      // One-time query
 
+    TC_LOG_INFO("server.loading", "Loading GameObject models...");
+    if (!LoadGameObjectModelList(m_dataPath))
+    {
+        TC_LOG_FATAL("server.loading", "Unable to load gameobject models (part of vmaps), objects using WMO models will crash the client - server shutting down!");
+        return false;
+    }
+
     TC_LOG_INFO("server.loading", "Initialize data stores...");
     ///- Load DB2s
     m_availableDbcLocaleMask = sDB2Manager.LoadStores(m_dataPath, m_defaultDbcLocale);
@@ -1851,19 +1827,14 @@ bool World::SetInitialWorldSettings()
         return false;
     }
 
-    TC_LOG_INFO("server.loading", "Loading GameObject models...");
-    if (!LoadGameObjectModelList(m_dataPath))
-    {
-        TC_LOG_FATAL("server.loading", "Unable to load gameobject models (part of vmaps), objects using WMO models will crash the client - server shutting down!");
-        return false;
-    }
-
     TC_LOG_INFO("misc", "Loading hotfix blobs...");
     sDB2Manager.LoadHotfixBlob(m_availableDbcLocaleMask);
     TC_LOG_INFO("misc", "Loading hotfix info...");
     sDB2Manager.LoadHotfixData(m_availableDbcLocaleMask);
     TC_LOG_INFO("misc", "Loading hotfix optional data...");
     sDB2Manager.LoadHotfixOptionalData(m_availableDbcLocaleMask);
+    TC_LOG_INFO("misc", "Indexing loaded data stores...");
+    sDB2Manager.IndexLoadedStores();
     ///- Load M2 fly by cameras
     LoadM2Cameras(m_dataPath);
     ///- Load GameTables
@@ -1931,6 +1902,9 @@ bool World::SetInitialWorldSettings()
 
     TC_LOG_INFO("server.loading", "Loading SpellInfo immunity infos...");
     sSpellMgr->LoadSpellInfoImmunities();
+
+    TC_LOG_INFO("server.loading", "Loading SpellInfo target caps...");
+    sSpellMgr->LoadSpellInfoTargetCaps();
 
     TC_LOG_INFO("server.loading", "Loading PetFamilySpellsStore Data...");
     sSpellMgr->LoadPetFamilySpellsStore();
@@ -2242,6 +2216,18 @@ bool World::SetInitialWorldSettings()
 
     TC_LOG_INFO("server.loading", "Loading Player Choices...");
     sObjectMgr->LoadPlayerChoices();
+
+    TC_LOG_INFO("server.loading", "Loading Spawn Tracking Templates...");
+    sObjectMgr->LoadSpawnTrackingTemplates();
+
+    TC_LOG_INFO("server.loading", "Loading Spawn Tracking Quest Objectives...");
+    sObjectMgr->LoadSpawnTrackingQuestObjectives();
+
+    TC_LOG_INFO("server.loading", "Loading Spawn Tracking Spawns...");
+    sObjectMgr->LoadSpawnTrackings();
+
+    TC_LOG_INFO("server.loading", "Loading Spawn Tracking Spawn States...");
+    sObjectMgr->LoadSpawnTrackingStates();
 
     if (m_bool_configs[CONFIG_LOAD_LOCALES])
     {
@@ -3427,6 +3413,7 @@ bool World::RemoveBanCharacter(std::string const& name)
 /// Update the game time
 void World::_UpdateGameTime()
 {
+
     ///- update the time
     time_t lastGameTime = GameTime::GetGameTime();
     GameTime::UpdateGameTimers();
@@ -4013,7 +4000,7 @@ void World::SetPersistentWorldVariable(PersistentWorldVariable const& var, int32
     m_worldVariables[var.Id] = value;
 
     CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_REP_WORLD_VARIABLE);
-    stmt->setStringView(0, var.Id);
+    stmt->setString(0, var.Id);
     stmt->setInt32(1, value);
     CharacterDatabase.Execute(stmt);
 }

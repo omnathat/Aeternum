@@ -65,7 +65,8 @@ enum ProcFlagsHit : uint32;
 enum ProcFlagsSpellType : uint32;
 enum SpellTargetCheckTypes : uint8;
 enum SpellTargetObjectTypes : uint8;
-enum SpellValueMod : uint8;
+enum SpellValueMod : int32;
+enum SpellValueModFloat : int32;
 enum TriggerCastFlags : uint32;
 enum WeaponAttackType : uint8;
 
@@ -371,6 +372,7 @@ class TC_GAME_API Spell
         void EffectUnlockGuildVaultTab();
         void EffectKillCreditPersonal();
         void EffectKillCredit();
+        void EffectKillCreditLabel();
         void EffectQuestFail();
         void EffectQuestStart();
         void EffectRedirectThreat();
@@ -426,9 +428,11 @@ class TC_GAME_API Spell
         void EffectRespecAzeriteEmpoweredItem();
         void EffectLearnAzeriteEssencePower();
         void EffectCreatePrivateConversation();
+        void EffectApplyMountEquipment();
         void EffectSendChatMessage();
         void EffectGrantBattlePetExperience();
         void EffectLearnTransmogIllusion();
+        void EffectCraftItem();
         void EffectModifyAuraStacks();
         void EffectModifyCooldown();
         void EffectModifyCooldowns();
@@ -437,6 +441,7 @@ class TC_GAME_API Spell
         void EffectCreateTraitTreeConfig();
         void EffectChangeActiveCombatTraitConfig();
         void EffectTeleportGraveyard();
+        void EffectUpdateInteractions();
 
         //NEW
         void EffectApplyAreaAura();
@@ -539,7 +544,7 @@ class TC_GAME_API Spell
         uint32 getState() const { return m_spellState; }
         void setState(uint32 state) { m_spellState = state; }
 
-        void DoCreateItem(uint32 itemId, ItemContext context = ItemContext::NONE, std::vector<int32> const* bonusListIDs = nullptr);
+        Item* DoCreateItem(uint32 itemId, ItemContext context = ItemContext::NONE, std::vector<int32> const* bonusListIDs = nullptr, bool update = true);
 
         bool CheckEffectTarget(Unit const* target, SpellEffectInfo const& spellEffectInfo, Position const* losPosition) const;
         bool CheckEffectTarget(GameObject const* target, SpellEffectInfo const& spellEffectInfo) const;
@@ -690,6 +695,7 @@ class TC_GAME_API Spell
         void CleanupTargetList();
 
         void SetSpellValue(SpellValueMod mod, int32 value);
+        void SetSpellValue(SpellValueModFloat mod, float value);
 
         Spell** m_selfContainer;                            // pointer to our spell container (if applicable)
 
@@ -845,6 +851,7 @@ class TC_GAME_API Spell
             int32 AuraBasePoints[MAX_SPELL_EFFECTS] = { };
             bool Positive = true;
             UnitAura* HitAura = nullptr;
+            ProcFlagsHit ProcHitMask = { };
 
         private:
             Unit* _spellHitTarget = nullptr; // changed for example by reflect
@@ -921,8 +928,8 @@ class TC_GAME_API Spell
         void CallScriptAfterHitHandlers();
     public:
         void CallScriptCalcCritChanceHandlers(Unit const* victim, float& chance);
-        void CallScriptCalcDamageHandlers(Unit* victim, int32& damage, int32& flatMod, float& pctMod);
-        void CallScriptCalcHealingHandlers(Unit* victim, int32& healing, int32& flatMod, float& pctMod);
+        void CallScriptCalcDamageHandlers(SpellEffectInfo const& spellEffectInfo, Unit* victim, int32& damage, int32& flatMod, float& pctMod);
+        void CallScriptCalcHealingHandlers(SpellEffectInfo const& spellEffectInfo, Unit* victim, int32& healing, int32& flatMod, float& pctMod);
     protected:
         void CallScriptObjectAreaTargetSelectHandlers(std::list<WorldObject*>& targets, SpellEffIndex effIndex, SpellImplicitTargetInfo const& targetType);
         void CallScriptObjectTargetSelectHandlers(WorldObject*& target, SpellEffIndex effIndex, SpellImplicitTargetInfo const& targetType);

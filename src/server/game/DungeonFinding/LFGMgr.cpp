@@ -58,7 +58,8 @@ LFGDungeonData::LFGDungeonData(LFGDungeonsEntry const* dbc) : id(dbc->ID), name(
 }
 
 LFGMgr::LFGMgr() : m_QueueTimer(0), m_lfgProposalId(1),
-    m_options(sWorld->getIntConfig(CONFIG_LFG_OPTIONSMASK))
+    m_options(sWorld->getIntConfig(CONFIG_LFG_OPTIONSMASK)),
+    m_isSoloLFG(false)
 {
 }
 
@@ -1081,7 +1082,7 @@ void LFGMgr::UpdateProposal(uint32 proposalId, ObjectGuid guid, bool accept)
         if (itPlayers->second.accept != LFG_ANSWER_AGREE)   // No answer (-1) or not accepted (0)
             allAnswered = false;
 
-    if (!allAnswered)
+    if (!sLFGMgr->IsSoloLFG() && !allAnswered)
     {
         for (LfgProposalPlayerContainer::const_iterator it = proposal.players.begin(); it != proposal.players.end(); ++it)
             SendLfgUpdateProposal(it->first, proposal);
@@ -1427,7 +1428,7 @@ void LFGMgr::TeleportPlayer(Player* player, bool out, bool fromOpcode /*= false*
 
         player->FinishTaxiFlight();
 
-        if (!player->TeleportTo(mapid, x, y, z, orientation))
+        if (!player->TeleportTo({ .Location = WorldLocation(mapid, x, y, z, orientation), .LfgDungeonsId = dungeon->id }))
             error = LFG_TELEPORT_RESULT_NO_RETURN_LOCATION;
     }
     else
@@ -1761,7 +1762,7 @@ LfgLockMap LFGMgr::GetLockedDungeons(ObjectGuid guid)
                 return LFG_LOCKSTATUS_RAID_LOCKED;
             if (sInstanceLockMgr.FindActiveInstanceLock(guid, { dungeon->map, Difficulty(dungeon->difficulty) }))
                 return LFG_LOCKSTATUS_RAID_LOCKED;
-            if (Optional<ContentTuningLevels> levels = sDB2Manager.GetContentTuningData(dungeon->contentTuningId, player->m_playerData->CtrOptions->ContentTuningConditionMask))
+            if (Optional<ContentTuningLevels> levels = sDB2Manager.GetContentTuningData(dungeon->contentTuningId, player->m_playerData->CtrOptions->ConditionalFlags))
             {
                 if (levels->MinLevel > level)
                     return LFG_LOCKSTATUS_TOO_LOW_LEVEL;
@@ -2221,6 +2222,11 @@ LfgDungeonSet LFGMgr::GetRandomAndSeasonalDungeons(uint8 level, uint8 expansion,
         randomDungeons.insert(dungeon.Entry());
     }
     return randomDungeons;
+}
+
+void LFGMgr::ToggleSoloLFG()
+{
+    m_isSoloLFG = !m_isSoloLFG;
 }
 
 } // namespace lfg

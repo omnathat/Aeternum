@@ -17,29 +17,26 @@
 
 #include "DB2Stores.h"
 #include "Containers.h"
-#include "DatabaseEnv.h"
 #include "DB2LoadInfo.h"
+#include "DatabaseEnv.h"
 #include "Hash.h"
 #include "ItemTemplate.h"
 #include "IteratorPair.h"
 #include "Log.h"
+#include "MapUtils.h"
 #include "Random.h"
 #include "Regex.h"
 #include "Timer.h"
 #include "Util.h"
 #include "World.h"
-#include <boost/filesystem/directory.hpp>
-#include <boost/filesystem/operations.hpp>
+#include <algorithm>
 #include <array>
 #include <bitset>
+#include <boost/filesystem/directory.hpp>
+#include <boost/filesystem/operations.hpp>
 #include <numeric>
-#include <sstream>
 #include <cctype>
-
-// temporary hack until includes are sorted out (don't want to pull in Windows.h)
-#ifdef GetClassName
-#undef GetClassName
-#endif
+#include <cmath>
 
 DB2Storage<AchievementEntry>                    sAchievementStore("Achievement.db2", &AchievementLoadInfo::Instance);
 DB2Storage<Achievement_CategoryEntry>           sAchievementCategoryStore("Achievement_Category.db2", &AchievementCategoryLoadInfo::Instance);
@@ -119,6 +116,12 @@ DB2Storage<ContentTuningXExpectedEntry>         sContentTuningXExpectedStore("Co
 DB2Storage<ContentTuningXLabelEntry>            sContentTuningXLabelStore("ContentTuningXLabel.db2", &ContentTuningXLabelLoadInfo::Instance);
 DB2Storage<ConversationLineEntry>               sConversationLineStore("ConversationLine.db2", &ConversationLineLoadInfo::Instance);
 DB2Storage<CorruptionEffectsEntry>              sCorruptionEffectsStore("CorruptionEffects.db2", &CorruptionEffectsLoadInfo::Instance);
+DB2Storage<CraftingDataEntry>                   sCraftingDataStore("CraftingData.db2", &CraftingDataLoadInfo::Instance);
+DB2Storage<CraftingDataItemQualityEntry>        sCraftingDataItemQualityStore("CraftingDataItemQuality.db2", &CraftingDataItemQualityLoadInfo::Instance);
+DB2Storage<CraftingDifficultyEntry>             sCraftingDifficultyStore("CraftingDifficulty.db2", &CraftingDifficultyLoadInfo::Instance);
+DB2Storage<CraftingDifficultyQualityEntry>      sCraftingDifficultyQualityStore("CraftingDifficultyQuality.db2", &CraftingDifficultyQualityLoadInfo::Instance);
+DB2Storage<CraftingQualityEntry>                sCraftingQualityStore("CraftingQuality.db2", &CraftingQualityLoadInfo::Instance);
+DB2Storage<CraftingReagentQualityEntry>         sCraftingReagentQualityStore("CraftingReagentQuality.db2", &CraftingReagentQualityLoadInfo::Instance);
 DB2Storage<CreatureDisplayInfoEntry>            sCreatureDisplayInfoStoreRaw("CreatureDisplayInfo.db2", &CreatureDisplayInfoLoadInfo::Instance);
 CreatureDisplayInfoStore                        sCreatureDisplayInfoStore;
 bool CreatureDisplayInfoStore::HasRecord(uint32 id) const { return sCreatureDisplayInfoStoreRaw.HasRecord(sObjectMgr->GetRealDisplayId(id)); }
@@ -127,6 +130,7 @@ const CreatureDisplayInfoEntry* CreatureDisplayInfoStore::AssertEntry(uint32 id)
 //DB2Storage<CreatureDisplayInfoEntry>            sCreatureDisplayInfoStore("CreatureDisplayInfo.db2", &CreatureDisplayInfoLoadInfo::Instance);
 DB2Storage<CreatureDisplayInfoExtraEntry>       sCreatureDisplayInfoExtraStore("CreatureDisplayInfoExtra.db2", &CreatureDisplayInfoExtraLoadInfo::Instance);
 DB2Storage<CreatureFamilyEntry>                 sCreatureFamilyStore("CreatureFamily.db2", &CreatureFamilyLoadInfo::Instance);
+DB2Storage<CreatureLabelEntry>                  sCreatureLabelStore("CreatureLabel.db2", &CreatureLabelLoadInfo::Instance);
 DB2Storage<CreatureModelDataEntry>              sCreatureModelDataStore("CreatureModelData.db2", &CreatureModelDataLoadInfo::Instance);
 DB2Storage<CreatureTypeEntry>                   sCreatureTypeStore("CreatureType.db2", &CreatureTypeLoadInfo::Instance);
 DB2Storage<CriteriaEntry>                       sCriteriaStore("Criteria.db2", &CriteriaLoadInfo::Instance);
@@ -148,10 +152,12 @@ DB2Storage<ExpectedStatEntry>                   sExpectedStatStore("ExpectedStat
 DB2Storage<ExpectedStatModEntry>                sExpectedStatModStore("ExpectedStatMod.db2", &ExpectedStatModLoadInfo::Instance);
 DB2Storage<FactionEntry>                        sFactionStore("Faction.db2", &FactionLoadInfo::Instance);
 DB2Storage<FactionTemplateEntry>                sFactionTemplateStore("FactionTemplate.db2", &FactionTemplateLoadInfo::Instance);
+DB2Storage<FlightCapabilityEntry>               sFlightCapabilityStore("FlightCapability.db2", &FlightCapabilityLoadInfo::Instance);
 DB2Storage<FriendshipRepReactionEntry>          sFriendshipRepReactionStore("FriendshipRepReaction.db2", &FriendshipRepReactionLoadInfo::Instance);
 DB2Storage<FriendshipReputationEntry>           sFriendshipReputationStore("FriendshipReputation.db2", &FriendshipReputationLoadInfo::Instance);
 DB2Storage<GameObjectArtKitEntry>               sGameObjectArtKitStore("GameObjectArtKit.db2", &GameobjectArtKitLoadInfo::Instance);
 DB2Storage<GameObjectDisplayInfoEntry>          sGameObjectDisplayInfoStore("GameObjectDisplayInfo.db2", &GameobjectDisplayInfoLoadInfo::Instance);
+DB2Storage<GameObjectLabelEntry>                sGameObjectLabelStore("GameObjectLabel.db2", &GameobjectLabelLoadInfo::Instance);
 DB2Storage<GameObjectsEntry>                    sGameObjectsStore("GameObjects.db2", &GameobjectsLoadInfo::Instance);
 DB2Storage<GameTipsEntry>                       sGameTipsStore("GameTips.db2", &GameTipsLoadInfo::Instance);
 DB2Storage<GarrAbilityEntry>                    sGarrAbilityStore("GarrAbility.db2", &GarrAbilityLoadInfo::Instance);
@@ -245,9 +251,15 @@ DB2Storage<MapDifficultyEntry>                  sMapDifficultyStore("MapDifficul
 DB2Storage<ModelFileDataEntry>                  sModelFileDataStore("ModelFileData.db2", &ModelFileDataLoadInfo::Instance);
 DB2Storage<MapDifficultyXConditionEntry>        sMapDifficultyXConditionStore("MapDifficultyXCondition.db2", &MapDifficultyXConditionLoadInfo::Instance);
 DB2Storage<MawPowerEntry>                       sMawPowerStore("MawPower.db2", &MawPowerLoadInfo::Instance);
+DB2Storage<MCRSlotXMCRCategoryEntry>            sMCRSlotXMCRCategoryStore("MCRSlotXMCRCategory.db2", &MCRSlotXMCRCategoryLoadInfo::Instance);
+DB2Storage<ModifiedCraftingCategoryEntry>       sModifiedCraftingCategoryStore("ModifiedCraftingCategory.db2", &ModifiedCraftingCategoryLoadInfo::Instance);
+DB2Storage<ModifiedCraftingReagentItemEntry>    sModifiedCraftingReagentItemStore("ModifiedCraftingReagentItem.db2", &ModifiedCraftingReagentItemLoadInfo::Instance);
+DB2Storage<ModifiedCraftingReagentSlotEntry>    sModifiedCraftingReagentSlotStore("ModifiedCraftingReagentSlot.db2", &ModifiedCraftingReagentSlotLoadInfo::Instance);
+DB2Storage<ModifiedCraftingSpellSlotEntry>      sModifiedCraftingSpellSlotStore("ModifiedCraftingSpellSlot.db2", &ModifiedCraftingSpellSlotLoadInfo::Instance);
 DB2Storage<ModifierTreeEntry>                   sModifierTreeStore("ModifierTree.db2", &ModifierTreeLoadInfo::Instance);
 DB2Storage<MountCapabilityEntry>                sMountCapabilityStore("MountCapability.db2", &MountCapabilityLoadInfo::Instance);
 DB2Storage<MountEntry>                          sMountStore("Mount.db2", &MountLoadInfo::Instance);
+DB2Storage<MountEquipmentEntry>                 sMountEquipmentStore("MountEquipment.db2", &MountEquipmentLoadInfo::Instance);
 DB2Storage<MountTypeXCapabilityEntry>           sMountTypeXCapabilityStore("MountTypeXCapability.db2", &MountTypeXCapabilityLoadInfo::Instance);
 DB2Storage<MountXDisplayEntry>                  sMountXDisplayStore("MountXDisplay.db2", &MountXDisplayLoadInfo::Instance);
 DB2Storage<MovieEntry>                          sMovieStore("Movie.db2", &MovieLoadInfo::Instance);
@@ -481,7 +493,7 @@ namespace
     std::array<AzeriteItemMilestonePowerEntry const*, MAX_AZERITE_ESSENCE_SLOT> _azeriteItemMilestonePowerByEssenceSlot;
     std::unordered_map<uint32 /*azeritePowerSetId*/, std::vector<AzeritePowerSetMemberEntry const*>> _azeritePowers;
     std::unordered_map<std::pair<uint32 /*azeriteUnlockSetId*/, ItemContext>, std::array<uint8, MAX_AZERITE_EMPOWERED_TIER>> _azeriteTierUnlockLevels;
-    std::unordered_map<std::pair<int32 /*broadcastTextId*/, CascLocaleBit /*cascLocaleBit*/>, int32> _broadcastTextDurations;
+    std::unordered_map<std::pair<uint32 /*broadcastTextId*/, CascLocaleBit /*cascLocaleBit*/>, int32> _broadcastTextDurations;
     std::unordered_map<std::pair<uint8, uint8>, CharBaseInfoEntry const*> _charBaseInfoByRaceAndClass;
     std::array<ChrClassUIDisplayEntry const*, MAX_CLASSES> _uiDisplayByClass;
     std::array<std::array<uint32, MAX_POWERS>, MAX_CLASSES> _powersByClass;
@@ -497,6 +509,7 @@ namespace
     std::unordered_map<int32, ConditionalChrModelEntry const*> _conditionalChrModelsByChrModelId;
     std::unordered_map<uint32 /*contentTuningId*/, std::vector<ConditionalContentTuningEntry const*>> _conditionalContentTuning;
     std::unordered_set<std::pair<uint32, int32>> _contentTuningLabels;
+    std::unordered_map<uint32 /*creatureDifficultyId*/, std::vector<int32>> _creatureLabels;
     std::unordered_multimap<uint32, CurrencyContainerEntry const*> _currencyContainers;
     CurvePointsContainer _curvePoints;
     EmotesTextSoundContainer _emoteTextSounds;
@@ -505,6 +518,7 @@ namespace
     FactionTeamContainer _factionTeams;
     std::unordered_map<uint32, std::set<FriendshipRepReactionEntry const*, DB2Manager::FriendshipRepReactionEntryComparator>> _friendshipRepReactions;
     HeirloomItemsContainer _heirlooms;
+    std::unordered_map<uint32 /*gameobjectId*/, std::vector<int32>> _gameobjectLabels;
     GlyphBindableSpellsContainer _glyphBindableSpells;
     GlyphRequiredSpecsContainer _glyphRequiredSpecs;
     ItemChildEquipmentContainer _itemChildEquipment;
@@ -555,6 +569,14 @@ namespace
     std::unordered_set<int32> _uiMapPhases;
     WMOAreaTableLookupContainer _wmoAreaTableLookup;
     std::unordered_map<uint32, std::unordered_set<uint32>> _pvpStatIdsByMap;
+
+    // Crafting
+    std::unordered_map<uint32, std::vector<ModifiedCraftingSpellSlotEntry const*>> _MCRSpellSlotBySpell;
+    std::unordered_map<uint32, std::vector<ModifiedCraftingCategoryEntry const*>> _MCRCategoryByReagentSlot;
+    std::unordered_map<uint32, std::vector<ModifiedCraftingReagentItemEntry const*>> _MCRReagentItemByCategory;
+    std::unordered_map<uint32, std::set<ItemSparseEntry const*>> _ItemSparseByMCRReagentItem;
+    std::unordered_map<uint32, std::vector<uint32>> _CraftingDataItemIDByCraftingData;
+    std::unordered_map<uint32, CraftingReagentQualityEntry const*> _CraftingReagentQualityByItem;
 }
 
 void LoadDB2(std::bitset<TOTAL_LOCALES>& availableDb2Locales, std::vector<std::string>& errlist, StorageMap& stores, DB2StorageBase* storage, std::string const& db2Path,
@@ -755,10 +777,17 @@ uint32 DB2Manager::LoadStores(std::string const& dataPath, LocaleConstant defaul
     LOAD_DB2(sContentTuningXLabelStore);
     LOAD_DB2(sConversationLineStore);
     LOAD_DB2(sCorruptionEffectsStore);
+    LOAD_DB2(sCraftingDataStore);
+    LOAD_DB2(sCraftingDataItemQualityStore);
+    LOAD_DB2(sCraftingDifficultyStore);
+    LOAD_DB2(sCraftingDifficultyQualityStore);
+    LOAD_DB2(sCraftingQualityStore);
+    LOAD_DB2(sCraftingReagentQualityStore);
     LOAD_DB2(sCreatureDisplayInfoStoreRaw);
     //LOAD_DB2(sCreatureDisplayInfoStore);
     LOAD_DB2(sCreatureDisplayInfoExtraStore);
     LOAD_DB2(sCreatureFamilyStore);
+    LOAD_DB2(sCreatureLabelStore);
     LOAD_DB2(sCreatureModelDataStore);
     LOAD_DB2(sCreatureTypeStore);
     LOAD_DB2(sCreatureDisplayInfoOptionStore);
@@ -780,12 +809,14 @@ uint32 DB2Manager::LoadStores(std::string const& dataPath, LocaleConstant defaul
     LOAD_DB2(sExpectedStatModStore);
     LOAD_DB2(sFactionStore);
     LOAD_DB2(sFactionTemplateStore);
+    LOAD_DB2(sFlightCapabilityStore);
     LOAD_DB2(sFriendshipRepReactionStore);
     LOAD_DB2(sFriendshipReputationStore);
     LOAD_DB2(sGameObjectsStore);
     LOAD_DB2(sGameObjectArtKitStore);
     LOAD_DB2(sGameObjectDisplayInfoStore);
     LOAD_DB2(sGameTipsStore);
+    LOAD_DB2(sGameObjectLabelStore);
     LOAD_DB2(sGarrAbilityStore);
     LOAD_DB2(sGarrBuildingStore);
     LOAD_DB2(sGarrBuildingPlotInstStore);
@@ -877,9 +908,15 @@ uint32 DB2Manager::LoadStores(std::string const& dataPath, LocaleConstant defaul
     LOAD_DB2(sModelFileDataStore);
     LOAD_DB2(sMapDifficultyXConditionStore);
     LOAD_DB2(sMawPowerStore);
+    LOAD_DB2(sMCRSlotXMCRCategoryStore);
+    LOAD_DB2(sModifiedCraftingCategoryStore);
+    LOAD_DB2(sModifiedCraftingReagentSlotStore);
+    LOAD_DB2(sModifiedCraftingReagentItemStore);
+    LOAD_DB2(sModifiedCraftingSpellSlotStore);
     LOAD_DB2(sModifierTreeStore);
     LOAD_DB2(sMountCapabilityStore);
     LOAD_DB2(sMountStore);
+    LOAD_DB2(sMountEquipmentStore);
     LOAD_DB2(sMountTypeXCapabilityStore);
     LOAD_DB2(sMountXDisplayStore);
     LOAD_DB2(sMovieStore);
@@ -1052,17 +1089,27 @@ uint32 DB2Manager::LoadStores(std::string const& dataPath, LocaleConstant defaul
     }
 
     // Check loaded DB2 files proper version
-    if (!sAreaTableStore.LookupEntry(15151) ||               // last area added in 10.2.5 (53007)
-        !sCharTitlesStore.LookupEntry(805) ||                // last char title added in 10.2.5 (53007)
-        !sGemPropertiesStore.LookupEntry(4081) ||            // last gem property added in 10.2.5 (53007)
-        !sItemStore.LookupEntry(215160) ||                   // last item added in 10.2.5 (53007)
-        !sItemExtendedCostStore.LookupEntry(8510) ||         // last item extended cost added in 10.2.5 (53007)
-        !sMapStore.LookupEntry(2708) ||                      // last map added in 10.2.5 (53007)
-        !sSpellNameStore.LookupEntry(438878))                // last spell added in 10.2.5 (53007)
+    if (!sAreaTableStore.LookupEntry(16108) ||               // last area added in 11.0.7 (58162)
+        !sCharTitlesStore.LookupEntry(876) ||                // last char title added in 11.0.7 (58162)
+        !sFlightCapabilityStore.LookupEntry(1) ||            // default flight capability (required)
+        !sGemPropertiesStore.LookupEntry(4266) ||            // last gem property added in 11.0.7 (58162)
+        !sItemStore.LookupEntry(235551) ||                   // last item added in 11.0.7 (58162)
+        !sItemExtendedCostStore.LookupEntry(9918) ||         // last item extended cost added in 11.0.7 (58162)
+        !sMapStore.LookupEntry(2829) ||                      // last map added in 11.0.7 (58162)
+        !sSpellNameStore.LookupEntry(1218101))               // last spell added in 11.0.7 (58162)
     {
         TC_LOG_FATAL("misc", "You have _outdated_ DB2 files. Please extract correct versions from current using client.");
         return 0;
     }
+
+    TC_LOG_INFO("server.loading", ">> Initialized {} DB2 data stores in {} ms", _stores.size(), GetMSTimeDiffToNow(oldMSTime));
+
+    return availableDb2Locales.to_ulong();
+}
+
+void DB2Manager::IndexLoadedStores()
+{
+    uint32 oldMSTime = getMSTime();
 
     for (AreaGroupMemberEntry const* areaGroupMember : sAreaGroupMemberStore)
         _areaGroupMembers[areaGroupMember->AreaGroupID].push_back(areaGroupMember->AreaID);
@@ -1094,10 +1141,7 @@ uint32 DB2Manager::LoadStores(std::string const& dataPath, LocaleConstant defaul
     for (AzeriteItemMilestonePowerEntry const* azeriteItemMilestonePower : sAzeriteItemMilestonePowerStore)
         _azeriteItemMilestonePowers.push_back(azeriteItemMilestonePower);
 
-    std::sort(_azeriteItemMilestonePowers.begin(), _azeriteItemMilestonePowers.end(), [](AzeriteItemMilestonePowerEntry const* a1, AzeriteItemMilestonePowerEntry const* a2)
-    {
-        return a1->RequiredLevel < a2->RequiredLevel;
-    });
+    std::ranges::sort(_azeriteItemMilestonePowers, {}, &AzeriteItemMilestonePowerEntry::RequiredLevel);
 
     {
         uint32 azeriteEssenceSlot = 0;
@@ -1154,8 +1198,8 @@ uint32 DB2Manager::LoadStores(std::string const& dataPath, LocaleConstant defaul
         for (ChrClassesXPowerTypesEntry const* power : sChrClassesXPowerTypesStore)
             powers.insert(power);
 
-        for (std::size_t i = 0; i < _powersByClass.size(); ++i)
-            _powersByClass[i].fill(MAX_POWERS);
+        for (std::array<uint32, MAX_POWERS>& powersForClass : _powersByClass)
+            powersForClass.fill(MAX_POWERS);
 
         for (ChrClassesXPowerTypesEntry const* power : powers)
         {
@@ -1220,7 +1264,7 @@ uint32 DB2Manager::LoadStores(std::string const& dataPath, LocaleConstant defaul
             std::vector<uint32>* choices = nullptr;
             for (std::pair<uint32, std::vector<uint32>>& choicesForOption : requiredChoicesForReq)
             {
-                if (int32(choicesForOption.first) == customizationChoice->ChrCustomizationOptionID)
+                if (choicesForOption.first == customizationChoice->ChrCustomizationOptionID)
                 {
                     choices = &choicesForOption.second;
                     break;
@@ -1310,6 +1354,9 @@ uint32 DB2Manager::LoadStores(std::string const& dataPath, LocaleConstant defaul
     for (ContentTuningXLabelEntry const* contentTuningXLabel : sContentTuningXLabelStore)
         _contentTuningLabels.emplace(contentTuningXLabel->ContentTuningID, contentTuningXLabel->LabelID);
 
+    for (CreatureLabelEntry const* creatureLabel : sCreatureLabelStore)
+        _creatureLabels[creatureLabel->CreatureDifficultyID].push_back(creatureLabel->LabelID);
+
     for (CurrencyContainerEntry const* currencyContainer : sCurrencyContainerStore)
         _currencyContainers.emplace(currencyContainer->CurrencyTypesID, currencyContainer);
 
@@ -1321,10 +1368,10 @@ uint32 DB2Manager::LoadStores(std::string const& dataPath, LocaleConstant defaul
 
         for (auto& [curveId, curvePoints] : unsortedPoints)
         {
-            std::sort(curvePoints.begin(), curvePoints.end(), [](CurvePointEntry const* point1, CurvePointEntry const* point2) { return point1->OrderIndex < point2->OrderIndex; });
+            std::ranges::sort(curvePoints, {}, &CurvePointEntry::OrderIndex);
             std::vector<DBCPosition2D>& points = _curvePoints[curveId];
             points.resize(curvePoints.size());
-            std::transform(curvePoints.begin(), curvePoints.end(), points.begin(), [](CurvePointEntry const* point) { return point->Pos; });
+            std::ranges::transform(curvePoints, points.begin(), &CurvePointEntry::Pos);
         }
     }
 
@@ -1350,6 +1397,9 @@ uint32 DB2Manager::LoadStores(std::string const& dataPath, LocaleConstant defaul
         if (gameObjectDisplayInfo->GeoBoxMax.Z < gameObjectDisplayInfo->GeoBoxMin.Z)
             std::swap(const_cast<GameObjectDisplayInfoEntry*>(gameObjectDisplayInfo)->GeoBoxMax.Z, const_cast<GameObjectDisplayInfoEntry*>(gameObjectDisplayInfo)->GeoBoxMin.Z);
     }
+
+    for (GameObjectLabelEntry const* gameobjectLabel : sGameObjectLabelStore)
+        _creatureLabels[gameobjectLabel->GameObjectID].push_back(gameobjectLabel->LabelID);
 
     for (HeirloomEntry const* heirloom : sHeirloomStore)
         _heirlooms[heirloom->ItemID] = heirloom;
@@ -1402,10 +1452,7 @@ uint32 DB2Manager::LoadStores(std::string const& dataPath, LocaleConstant defaul
     for (MapDifficultyXConditionEntry const* mapDifficultyCondition : sMapDifficultyXConditionStore)
         mapDifficultyConditions.push_back(mapDifficultyCondition);
 
-    std::sort(mapDifficultyConditions.begin(), mapDifficultyConditions.end(), [](MapDifficultyXConditionEntry const* left, MapDifficultyXConditionEntry const* right)
-    {
-        return left->OrderIndex < right->OrderIndex;
-    });
+    std::ranges::sort(mapDifficultyConditions, {}, &MapDifficultyXConditionEntry::OrderIndex);
 
     for (MapDifficultyXConditionEntry const* mapDifficultyCondition : mapDifficultyConditions)
         if (PlayerConditionEntry const* playerCondition = sPlayerConditionStore.LookupEntry(mapDifficultyCondition->PlayerConditionID))
@@ -1596,8 +1643,7 @@ uint32 DB2Manager::LoadStores(std::string const& dataPath, LocaleConstant defaul
     std::vector<uint32> pathLength;
     pathLength.resize(pathCount);                           // 0 and some other indexes not used
     for (TaxiPathNodeEntry const* entry : sTaxiPathNodeStore)
-        if (pathLength[entry->PathID] < entry->NodeIndex + 1u)
-            pathLength[entry->PathID] = entry->NodeIndex + 1u;
+        pathLength[entry->PathID] = std::max(pathLength[entry->PathID], entry->NodeIndex + 1u);
 
     // Set path length
     sTaxiPathNodesByPath.resize(pathCount);                 // 0 and some other indexes not used
@@ -1642,7 +1688,7 @@ uint32 DB2Manager::LoadStores(std::string const& dataPath, LocaleConstant defaul
         }
     }
 
-    std::unordered_map<std::pair<int32, uint32>, UiMapLinkEntry const*> uiMapLinks;
+    std::unordered_map<std::pair<uint32, uint32>, UiMapLinkEntry const*> uiMapLinks;
     for (UiMapLinkEntry const* uiMapLink : sUiMapLinkStore)
         uiMapLinks[std::make_pair(uiMapLink->ParentUiMapID, uint32(uiMapLink->ChildUiMapID))] = uiMapLink;
 
@@ -1745,7 +1791,7 @@ uint32 DB2Manager::LoadStores(std::string const& dataPath, LocaleConstant defaul
         if (node->GetFlags().HasFlag(TaxiNodeFlags::ShowOnAllianceMap))
             sAllianceTaxiNodesMask[field] |= submask;
 
-        int32 uiMapId = -1;
+        uint32 uiMapId = uint32(-1);
         if (!GetUiMapPosition(node->Pos.X, node->Pos.Y, node->Pos.Z, node->ContinentID, 0, 0, 0, UI_MAP_SYSTEM_ADVENTURE, false, &uiMapId))
             GetUiMapPosition(node->Pos.X, node->Pos.Y, node->Pos.Z, node->ContinentID, 0, 0, 0, UI_MAP_SYSTEM_TAXI, false, &uiMapId);
 
@@ -1756,9 +1802,26 @@ uint32 DB2Manager::LoadStores(std::string const& dataPath, LocaleConstant defaul
     for (PVPStatEntry const* pvpStat : sPVPStatStore)
         _pvpStatIdsByMap[pvpStat->MapID].insert(pvpStat->ID);
 
-    TC_LOG_INFO("server.loading", ">> Initialized {} DB2 data stores in {} ms", _stores.size(), GetMSTimeDiffToNow(oldMSTime));
+    for (ModifiedCraftingSpellSlotEntry const* entry : sModifiedCraftingSpellSlotStore)
+        _MCRSpellSlotBySpell[entry->SpellID].push_back(entry);
 
-    return availableDb2Locales.to_ulong();
+    for (MCRSlotXMCRCategoryEntry const* entry : sMCRSlotXMCRCategoryStore)
+        if (ModifiedCraftingCategoryEntry const* category = sModifiedCraftingCategoryStore.LookupEntry(entry->ModifiedCraftingCategoryID))
+            _MCRCategoryByReagentSlot[entry->ModifiedCraftingReagentSlotID].push_back(category);
+
+    for (ModifiedCraftingReagentItemEntry const* entry : sModifiedCraftingReagentItemStore)
+        _MCRReagentItemByCategory[entry->ModifiedCraftingCategoryID].push_back(entry);
+
+    for (ItemSparseEntry const* entry : sItemSparseStore)
+        _ItemSparseByMCRReagentItem[entry->ModifiedCraftingReagentItemID].insert(entry);
+
+    for (CraftingDataItemQualityEntry const* entry : sCraftingDataItemQualityStore)
+        _CraftingDataItemIDByCraftingData[entry->CraftingDataID].push_back(entry->ItemID);
+
+    for (CraftingReagentQualityEntry const* entry : sCraftingReagentQualityStore)
+        _CraftingReagentQualityByItem[entry->ItemID] = entry;
+
+    TC_LOG_INFO("server.loading", ">> Indexed DB2 data stores in {} ms", GetMSTimeDiffToNow(oldMSTime));
 }
 
 DB2StorageBase const* DB2Manager::GetStorage(uint32 type) const
@@ -2138,7 +2201,7 @@ char const* DB2Manager::GetBroadcastTextValue(BroadcastTextEntry const* broadcas
     return broadcastText->Text[DEFAULT_LOCALE];
 }
 
-int32 const* DB2Manager::GetBroadcastTextDuration(int32 broadcastTextId, LocaleConstant locale /*= DEFAULT_LOCALE*/) const
+int32 const* DB2Manager::GetBroadcastTextDuration(uint32 broadcastTextId, LocaleConstant locale /*= DEFAULT_LOCALE*/) const
 {
     return Trinity::Containers::MapGetValuePtr(_broadcastTextDurations, { broadcastTextId, WowLocaleToCascLocaleBit[locale] });
 }
@@ -2154,7 +2217,7 @@ ChrClassUIDisplayEntry const* DB2Manager::GetUiDisplayForClass(Classes unitClass
     return _uiDisplayByClass[unitClass];
 }
 
-char const* DB2Manager::GetClassName(uint8 class_, LocaleConstant locale /*= DEFAULT_LOCALE*/)
+char const* DB2Manager::GetChrClassName(uint8 class_, LocaleConstant locale /*= DEFAULT_LOCALE*/)
 {
     ChrClassesEntry const* classEntry = sChrClassesStore.LookupEntry(class_);
     if (!classEntry)
@@ -2307,6 +2370,12 @@ char const* DB2Manager::GetCreatureFamilyPetName(uint32 petfamily, LocaleConstan
         return nullptr;
 
     return petFamily->Name[locale][0] != '\0' ? petFamily->Name[locale] : nullptr;
+}
+
+std::span<int32 const> DB2Manager::GetCreatureLabels(uint32 creatureDifficultyId) const
+{
+    std::vector<int32> const* labels = Trinity::Containers::MapGetValuePtr(_creatureLabels, creatureDifficultyId);
+    return labels ? std::span<int32 const>(*labels) : std::span<int32 const>();
 }
 
 CurrencyContainerEntry const* DB2Manager::GetCurrencyContainerForCurrencyQuantity(uint32 currencyId, int32 quantity) const
@@ -2636,6 +2705,12 @@ DB2Manager::FriendshipRepReactionSet const* DB2Manager::GetFriendshipRepReaction
     return Trinity::Containers::MapGetValuePtr(_friendshipRepReactions, friendshipRepID);
 }
 
+std::span<int32 const> DB2Manager::GetGameObjectLabels(uint32 gameobjectId) const
+{
+    std::vector<int32> const* labels = Trinity::Containers::MapGetValuePtr(_gameobjectLabels, gameobjectId);
+    return labels ? std::span<int32 const>(*labels) : std::span<int32 const>();
+}
+
 uint32 DB2Manager::GetGlobalCurveId(GlobalCurve globalCurveType) const
 {
     for (GlobalCurveEntry const* globalCurveEntry : sGlobalCurveStore)
@@ -2857,32 +2932,34 @@ uint32 DB2Manager::GetLiquidFlags(uint32 liquidType)
 
 MapDifficultyEntry const* DB2Manager::GetDefaultMapDifficulty(uint32 mapId, Difficulty* difficulty /*= nullptr*/) const
 {
-    auto itr = _mapDifficulties.find(mapId);
-    if (itr == _mapDifficulties.end())
+    std::unordered_map<uint32, MapDifficultyEntry const*>* difficultiesForMap = Trinity::Containers::MapGetValuePtr(_mapDifficulties, mapId);
+    if (!difficultiesForMap)
         return nullptr;
 
-    if (itr->second.empty())
-        return nullptr;
+    auto difficultyEnd = difficultiesForMap->end();
 
-    for (auto& p : itr->second)
+    // first find any valid difficulty
+    auto foundDifficulty = std::ranges::find_if(difficultiesForMap->begin(), difficultyEnd,
+        [](std::pair<uint32 const, MapDifficultyEntry const*> const& p) { return sDifficultyStore.HasRecord(p.first); });
+
+    if (foundDifficulty == difficultyEnd)
+        return nullptr; // nothing valid was found
+
+    if (!(sDifficultyStore.AssertEntry(foundDifficulty->first)->Flags & DIFFICULTY_FLAG_DEFAULT))
     {
-        DifficultyEntry const* difficultyEntry = sDifficultyStore.LookupEntry(p.first);
-        if (!difficultyEntry)
-            continue;
+        // first valid difficulty wasn't default, try finding one
+        auto defaultDifficulty = std::ranges::find_if(foundDifficulty, difficultyEnd,
+            [](DifficultyEntry const* difficultyEntry) { return difficultyEntry && (difficultyEntry->Flags & DIFFICULTY_FLAG_DEFAULT) != 0; },
+            [](std::pair<uint32 const, MapDifficultyEntry const*> const& p) { return sDifficultyStore.LookupEntry(p.first); });
 
-        if (difficultyEntry->Flags & DIFFICULTY_FLAG_DEFAULT)
-        {
-            if (difficulty)
-                *difficulty = Difficulty(p.first);
-
-            return p.second;
-        }
+        if (defaultDifficulty != difficultyEnd)
+            foundDifficulty = defaultDifficulty; // got a default
     }
 
     if (difficulty)
-        *difficulty = Difficulty(itr->second.begin()->first);
+        *difficulty = Difficulty(foundDifficulty->first);
 
-    return itr->second.begin()->second;
+    return foundDifficulty->second;
 }
 
 MapDifficultyEntry const* DB2Manager::GetMapDifficultyData(uint32 mapId, Difficulty difficulty) const
@@ -3521,7 +3598,7 @@ static UiMapAssignmentEntry const* FindNearestMapAssignment(float x, float y, fl
     return nearestMapAssignment.UiMapAssignment;
 }
 
-static DBCPosition2D CalculateGlobalUiMapPosition(int32 uiMapID, DBCPosition2D uiPosition)
+static DBCPosition2D CalculateGlobalUiMapPosition(uint32 uiMapID, DBCPosition2D uiPosition)
 {
     UiMapEntry const* uiMap = sUiMapStore.LookupEntry(uiMapID);
     while (uiMap)
@@ -3543,7 +3620,7 @@ static DBCPosition2D CalculateGlobalUiMapPosition(int32 uiMapID, DBCPosition2D u
 }
 
 bool DB2Manager::GetUiMapPosition(float x, float y, float z, int32 mapId, int32 areaId, int32 wmoDoodadPlacementId, int32 wmoGroupId, UiMapSystem system, bool local,
-    int32* uiMapId /*= nullptr*/, DBCPosition2D* newPos /*= nullptr*/)
+    uint32* uiMapId /*= nullptr*/, DBCPosition2D* newPos /*= nullptr*/)
 {
     if (uiMapId)
         *uiMapId = -1;
@@ -3624,6 +3701,52 @@ bool DB2Manager::IsUiMapPhase(uint32 phaseId) const
 WMOAreaTableEntry const* DB2Manager::GetWMOAreaTable(int32 rootId, int32 adtId, int32 groupId) const
 {
     return Trinity::Containers::MapGetValuePtr(_wmoAreaTableLookup, WMOAreaTableKey(int16(rootId), int8(adtId), groupId));
+}
+
+std::vector<ModifiedCraftingSpellSlotEntry const*> DB2Manager::GetMCRSpellSlotBySpell(uint32 spellId)
+{
+    return _MCRSpellSlotBySpell[spellId];
+}
+
+std::vector<ModifiedCraftingCategoryEntry const*> DB2Manager::GetMCRCategoryByReagentSlot(uint32 reagentSlotID)
+{
+    return _MCRCategoryByReagentSlot[reagentSlotID];
+}
+
+std::vector<ModifiedCraftingReagentItemEntry const*> DB2Manager::GetMCRReagentItemByCategory(uint32 categoryID)
+{
+    return _MCRReagentItemByCategory[categoryID];
+}
+
+std::set<ItemSparseEntry const*> DB2Manager::GetItemSparseByMCRReagentItem(uint32 reagentItemID)
+{
+    return _ItemSparseByMCRReagentItem[reagentItemID];
+}
+
+std::vector<uint32> DB2Manager::GetCraftingDataItemIDByCraftingData(uint32 craftingDataID)
+{
+    return _CraftingDataItemIDByCraftingData[craftingDataID];
+}
+
+CraftingReagentQualityEntry const* DB2Manager::GetCraftingReagentQualityByItem(uint32 itemID)
+{
+    return _CraftingReagentQualityByItem[itemID];
+}
+
+uint32 DB2Manager::GetCraftingQualityTierByDifficultyPercent(int32 craftingDifficultyID, uint32 difficultyPercent)
+{
+    CraftingDifficultyQualityEntry const* matchedDifficultyQuality = nullptr;
+
+    for (CraftingDifficultyQualityEntry const* craftingDifficultyQuality : sCraftingDifficultyQualityStore)
+        if (craftingDifficultyQuality->CraftingDifficultyID == craftingDifficultyID && craftingDifficultyQuality->QualityPercentage <= difficultyPercent)
+            if (!matchedDifficultyQuality || matchedDifficultyQuality->QualityPercentage < craftingDifficultyQuality->QualityPercentage)
+                matchedDifficultyQuality = craftingDifficultyQuality;
+
+    if (matchedDifficultyQuality)
+        if (CraftingQualityEntry const* craftingQualityEntry = sCraftingQualityStore.LookupEntry(matchedDifficultyQuality->CraftingQualityID))
+            return craftingQualityEntry->QualityTier;
+
+    return 0;
 }
 
 std::unordered_set<uint32> const* DB2Manager::GetPVPStatIDsForMap(uint32 mapId) const

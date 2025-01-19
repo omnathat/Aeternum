@@ -65,6 +65,7 @@ void WorldSession::HandleQuestgiverHelloOpcode(WorldPackets::Quest::QuestGiverHe
         if (Creature* creature = _player->GetMap()->GetCreature(packet.QuestGiverGUID))
             creature->SendMirrorSound(_player, 0);
 #endif
+
     Creature* creature = GetPlayer()->GetNPCIfCanInteractWith(packet.QuestGiverGUID, UNIT_NPC_FLAG_QUESTGIVER, UNIT_NPC_FLAG_2_NONE);
     if (!creature)
     {
@@ -83,13 +84,13 @@ void WorldSession::HandleQuestgiverHelloOpcode(WorldPackets::Quest::QuestGiverHe
     creature->SetHomePosition(creature->GetPosition());
 
     _player->PlayerTalkClass->ClearMenus();
-	
+
 #ifdef ELUNA
     if (Eluna* e = GetPlayer()->GetEluna())
         if (e->OnGossipHello(_player, creature))
             return;
 #endif
-	
+
     if (creature->AI()->OnGossipHello(_player))
         return;
 
@@ -196,15 +197,14 @@ void WorldSession::HandleQuestgiverAcceptQuestOpcode(WorldPackets::Quest::QuestG
                 }
             }
 
-            _player->PlayerTalkClass->SendCloseGossip();
-
-            if (quest->HasFlag(QUEST_FLAGS_LAUNCH_GOSSIP_ACCEPT))
+            if (quest->HasFlag(QUEST_FLAGS_LAUNCH_GOSSIP_ACCEPT) && !quest->HasFlagEx(QUEST_FLAGS_EX_SUPPRESS_GOSSIP_ACCEPT))
             {
                 auto launchGossip = [&](WorldObject* worldObject)
                 {
                     _player->PlayerTalkClass->ClearMenus();
                     _player->PrepareGossipMenu(worldObject, _player->GetGossipMenuForSource(worldObject), true);
                     _player->SendPreparedGossip(worldObject);
+                    _player->PlayerTalkClass->GetInteractionData().IsLaunchedByQuest = true;
                 };
 
                 if (Creature* creature = object->ToCreature())
@@ -212,6 +212,8 @@ void WorldSession::HandleQuestgiverAcceptQuestOpcode(WorldPackets::Quest::QuestG
                 else if (GameObject* go = object->ToGameObject())
                     launchGossip(go);
             }
+            else
+                _player->PlayerTalkClass->SendCloseGossip();
 
             return;
         }
@@ -459,6 +461,7 @@ void WorldSession::HandleQuestLogRemoveQuest(WorldPackets::Quest::QuestLogRemove
                 }
             }
 
+            _player->SendForceSpawnTrackingUpdate(questId);
             _player->SetQuestSlot(packet.Entry, 0);
             _player->TakeQuestSourceItem(questId, true); // remove quest src item from player
             _player->AbandonQuest(questId); // remove all quest items player received before abandoning quest. Note, this does not remove normal drop items that happen to be quest requirements.
@@ -859,10 +862,21 @@ void WorldSession::HandleUiMapQuestLinesRequest(WorldPackets::Quest::UiMapQuestL
             if (!questLineQuests)
                 continue;
 
+            bool isQuestLineCompleted = true;
             for (QuestLineXQuestEntry const* questLineQuest : *questLineQuests)
+            {
                 if (Quest const* quest = sObjectMgr->GetQuestTemplate(questLineQuest->QuestID))
+                {
                     if (_player->CanTakeQuest(quest, false))
                         response.QuestLineXQuestIDs.push_back(questLineQuest->ID);
+
+                    if (isQuestLineCompleted && !_player->GetQuestRewardStatus(questLineQuest->QuestID))
+                        isQuestLineCompleted = false;
+                }
+            }
+
+            if (!isQuestLineCompleted)
+                response.QuestLineIDs.push_back(questLineId);
         }
     }
 
@@ -872,6 +886,68 @@ void WorldSession::HandleUiMapQuestLinesRequest(WorldPackets::Quest::UiMapQuestL
             if (Quest const* quest = sObjectMgr->GetQuestTemplate(questId))
                 if (_player->CanTakeQuest(quest, false))
                     response.QuestIDs.push_back(questId);
+    }
+
+    SendPacket(response.Write());
+}
+
+void WorldSession::HandleSpawnTrackingUpdate(WorldPackets::Quest::SpawnTrackingUpdate& spawnTrackingUpdate)
+{
+    WorldPackets::Quest::QuestPOIUpdateResponse response;
+
+    auto hasObjectTypeRequested = [](TypeMask objectTypeMask, SpawnObjectType objectType) -> bool
+    {
+        if (objectTypeMask & TYPEMASK_UNIT)
+            return objectType == SPAWN_TYPE_CREATURE;
+        else if (objectTypeMask & TYPEMASK_GAMEOBJECT)
+            return objectType == SPAWN_TYPE_GAMEOBJECT;
+
+        return false;
+    };
+
+    for (WorldPackets::Quest::SpawnTrackingRequestInfo const& requestInfo : spawnTrackingUpdate.SpawnTrackingRequests)
+    {
+        WorldPackets::Quest::SpawnTrackingResponseInfo responseInfo;
+        responseInfo.SpawnTrackingID = requestInfo.SpawnTrackingID;
+        responseInfo.ObjectID = requestInfo.ObjectID;
+
+        SpawnTrackingTemplateData const* spawnTrackingTemplateData = sObjectMgr->GetSpawnTrackingData(requestInfo.SpawnTrackingID);
+        QuestObjective const* activeQuestObjective = _player->GetActiveQuestObjectiveForForSpawnTracking(requestInfo.SpawnTrackingID);
+
+        // Send phase info if map is the same or spawn tracking related quests are taken or completed
+        if (spawnTrackingTemplateData && (_player->GetMapId() == spawnTrackingTemplateData->MapId || activeQuestObjective))
+        {
+            responseInfo.PhaseID = spawnTrackingTemplateData->PhaseId;
+            responseInfo.PhaseGroupID = spawnTrackingTemplateData->PhaseGroup;
+            responseInfo.PhaseUseFlags = spawnTrackingTemplateData->PhaseUseFlags;
+
+            // Send spawn visibility data if available
+            if (requestInfo.ObjectTypeMask && requestInfo.ObjectTypeMask & (TYPEMASK_UNIT | TYPEMASK_GAMEOBJECT))
+            {
+                // There should only be one entity
+                for (auto const& [spawnTrackingId, data] : sObjectMgr->GetSpawnMetadataForSpawnTracking(requestInfo.SpawnTrackingID))
+                {
+                    SpawnData const* spawnData = data->ToSpawnData();
+                    if (!spawnData)
+                        continue;
+
+                    if (spawnData->id != (uint32)requestInfo.ObjectID)
+                        continue;
+
+                    if (!hasObjectTypeRequested(TypeMask(requestInfo.ObjectTypeMask), data->type))
+                        continue;
+
+                    if (activeQuestObjective)
+                    {
+                        SpawnTrackingState state = _player->GetSpawnTrackingStateByObjective(spawnTrackingId, activeQuestObjective->ID);
+                        responseInfo.Visible = data->spawnTrackingStates[AsUnderlyingType(state)].Visible;
+                        break;
+                    }
+                }
+            }
+        }
+
+        response.SpawnTrackingResponses.push_back(std::move(responseInfo));
     }
 
     SendPacket(response.Write());

@@ -23,6 +23,8 @@
  */
 
 #include "ScriptMgr.h"
+#include "AreaTrigger.h"
+#include "AreaTriggerAI.h"
 #include "Battleground.h"
 #include "BattlePetMgr.h"
 #include "CellImpl.h"
@@ -34,11 +36,13 @@
 #include "GridNotifiersImpl.h"
 #include "Item.h"
 #include "Log.h"
+#include "MapUtils.h"
 #include "MotionMaster.h"
 #include "NPCPackets.h"
 #include "ObjectMgr.h"
 #include "Pet.h"
 #include "ReputationMgr.h"
+#include "PathGenerator.h"
 #include "SkillDiscovery.h"
 #include "SpellAuraEffects.h"
 #include "SpellHistory.h"
@@ -1013,7 +1017,7 @@ private:
 // 64208 - Consumption
 class spell_gen_consumption : public SpellScript
 {
-    void CalculateDamage(Unit const* /*victim*/, int32& damage, int32& /*flatMod*/, float& /*pctMod*/) const
+    void CalculateDamage(SpellEffectInfo const& /*spellEffectInfo*/, Unit const* /*victim*/, int32& damage, int32& /*flatMod*/, float& /*pctMod*/) const
     {
         if (SpellInfo const* createdBySpell = sSpellMgr->GetSpellInfo(GetCaster()->m_unitData->CreatedBySpell, GetCastDifficulty()))
             damage = createdBySpell->GetEffect(EFFECT_1).CalcValue();
@@ -5287,7 +5291,7 @@ class spell_gen_major_healing_cooldown_modifier : public SpellScript
         });
     }
 
-    void CalculateHealingBonus(Unit* /*victim*/, int32& /*healing*/, int32& /*flatMod*/, float& pctMod) const
+    void CalculateHealingBonus(SpellEffectInfo const& /*spellEffectInfo*/, Unit* /*victim*/, int32& /*healing*/, int32& /*flatMod*/, float& pctMod) const
     {
         AddPct(pctMod, MajorPlayerHealingCooldownHelpers::GetBonusMultiplier(GetCaster(), GetSpellInfo()->Id));
     }
@@ -5377,6 +5381,348 @@ public:
 
 private:
     uint64 _health;
+};
+
+// 128648 - Defending Cart Aura
+class spell_bg_defending_cart_aura final : public SpellScript
+{
+    void FilterTargets(std::list<WorldObject*>& targets) const
+    {
+        if (targets.empty())
+            return;
+
+        if (GameObject const* controlZone = GetControlZone())
+        {
+            targets.remove_if([&](WorldObject* obj)
+            {
+                if (Player const* player = obj->ToPlayer())
+                    return GetTeamIdForTeam(player->GetBGTeam()) != controlZone->GetControllingTeam();
+
+                return true;
+            });
+        }
+    }
+
+    GameObject const* GetControlZone() const
+    {
+        if (Unit const* caster = GetCaster())
+        {
+            Unit::AuraEffectList const& auraEffects = caster->GetAuraEffectsByType(SPELL_AURA_ACT_AS_CONTROL_ZONE);
+            for (AuraEffect const* auraEffect : auraEffects)
+                if (GameObject const* gameobject = caster->GetGameObject(auraEffect->GetSpellInfo()->Id))
+                    return gameobject;
+        }
+
+        return nullptr;
+    }
+
+    void Register() override
+    {
+        OnObjectAreaTargetSelect += SpellObjectAreaTargetSelectFn(spell_bg_defending_cart_aura::FilterTargets, EFFECT_0, TARGET_UNIT_SRC_AREA_ALLY);
+    }
+};
+
+// 128648 - Defending Cart Aura
+class spell_bg_defending_cart_aura_AuraScript final : public AuraScript
+{
+    void OnPeriodic(AuraEffect const* /*aurEff*/) const
+    {
+        Unit const* caster = GetCaster();
+        if (!caster)
+            return;
+
+        if (GameObject const* controlZone = GetControlZone())
+            if (!controlZone->GetInsidePlayers()->contains(GetTarget()->GetGUID()))
+                GetTarget()->RemoveAurasDueToSpell(GetSpellInfo()->Id, caster->GetGUID());
+    }
+
+    GameObject const* GetControlZone() const
+    {
+        if (Unit const* caster = GetCaster())
+        {
+            Unit::AuraEffectList const& auraEffects = caster->GetAuraEffectsByType(SPELL_AURA_ACT_AS_CONTROL_ZONE);
+            for (AuraEffect const* auraEffect : auraEffects)
+                if (GameObject const* gameobject = caster->GetGameObject(auraEffect->GetSpellInfo()->Id))
+                    return gameobject;
+        }
+
+        return nullptr;
+    }
+
+    void Register() override
+    {
+        OnEffectPeriodic += AuraEffectPeriodicFn(spell_bg_defending_cart_aura_AuraScript::OnPeriodic, EFFECT_0, SPELL_AURA_PERIODIC_DUMMY);
+    }
+};
+
+// 296837 - Comfortable Rider's Barding
+class spell_gen_comfortable_riders_barding : public AuraScript
+{
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SPELL_DAZED });
+    }
+
+    template <bool apply>
+    void HandleEffect(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/) const
+    {
+        GetTarget()->ApplySpellImmune(GetId(), IMMUNITY_ID, SPELL_DAZED, apply);
+    }
+
+    void Register() override
+    {
+        OnEffectApply += AuraEffectApplyFn(spell_gen_comfortable_riders_barding::HandleEffect<true>, EFFECT_0, SPELL_AURA_DUMMY, AURA_EFFECT_HANDLE_REAL);
+        OnEffectRemove += AuraEffectApplyFn(spell_gen_comfortable_riders_barding::HandleEffect<false>, EFFECT_0, SPELL_AURA_DUMMY, AURA_EFFECT_HANDLE_REAL);
+    }
+};
+
+// 297091 - Parachute
+class spell_gen_saddlechute : public AuraScript
+{
+    static constexpr uint32 SPELL_PARACHUTE = 297092;
+
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SPELL_PARACHUTE });
+    }
+
+    void TriggerParachute(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/) const
+    {
+        Unit* target = GetTarget();
+        if (target->IsFlying() || target->IsFalling())
+            target->CastSpell(target, SPELL_PARACHUTE, TRIGGERED_DONT_REPORT_CAST_ERROR);
+    }
+
+    void Register() override
+    {
+        AfterEffectRemove += AuraEffectApplyFn(spell_gen_saddlechute::TriggerParachute, EFFECT_0, SPELL_AURA_DUMMY, AURA_EFFECT_HANDLE_REAL);
+    }
+};
+
+enum SpatialRiftSpells
+{
+    SPELL_SPATIAL_RIFT_TELEPORT     = 257034,
+    SPELL_SPATIAL_RIFT_AREATRIGGER  = 256948
+};
+
+// 257040 - Spatial Rift
+class spell_gen_spatial_rift : public SpellScript
+{
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SPELL_SPATIAL_RIFT_TELEPORT, SPELL_SPATIAL_RIFT_AREATRIGGER });
+    }
+
+    void HandleDummy(SpellEffIndex /*effIndex*/) const
+    {
+        Unit* caster = GetCaster();
+
+        AreaTrigger* at = caster->GetAreaTrigger(SPELL_SPATIAL_RIFT_AREATRIGGER);
+        if (!at)
+            return;
+
+        caster->CastSpell(at->GetPosition(), SPELL_SPATIAL_RIFT_TELEPORT, CastSpellExtraArgsInit{
+            .TriggerFlags = TRIGGERED_IGNORE_CAST_IN_PROGRESS | TRIGGERED_DONT_REPORT_CAST_ERROR,
+            .TriggeringSpell = GetSpell()
+        });
+
+        at->SetDuration(0);
+    }
+
+    void Register() override
+    {
+        OnEffectHit += SpellEffectFn(spell_gen_spatial_rift::HandleDummy, EFFECT_0, SPELL_EFFECT_DUMMY);
+    }
+};
+
+struct at_gen_spatial_rift : AreaTriggerAI
+{
+    using AreaTriggerAI::AreaTriggerAI;
+
+    void OnInitialize() override
+    {
+        SpellInfo const* spellInfo = sSpellMgr->AssertSpellInfo(at->GetSpellId(), DIFFICULTY_NONE);
+        if (!spellInfo)
+            return;
+
+        Position destPos = at->GetPosition();
+        at->MovePositionToFirstCollision(destPos, spellInfo->GetMaxRange(), 0.0f);
+
+        PathGenerator path(at);
+        path.CalculatePath(destPos.GetPositionX(), destPos.GetPositionY(), destPos.GetPositionZ(), true);
+
+        at->InitSplines(path.GetPath());
+    }
+};
+
+//Allied Race SpellFix
+
+// Arcane Pulse (Nightborne racial) - 260364
+class spell_arcane_pulse : public SpellScript
+{
+    void HandleDamage(SpellEffIndex /*effIndex*/)
+    {
+        float damage = GetCaster()->GetTotalAttackPowerValue(BASE_ATTACK) * 2.f;
+
+        if (!damage)
+            damage = float(GetCaster()->GetTotalSpellPowerValue(SPELL_SCHOOL_MASK_ALL, false)) * 0.75f;
+
+        SetHitDamage(damage);
+    }
+
+    void Register() override
+    {
+        OnEffectHitTarget += SpellEffectFn(spell_arcane_pulse::HandleDamage, EFFECT_0, SPELL_EFFECT_SCHOOL_DAMAGE);
+    }
+};
+
+// Light's Judgement - 256893  (Lightforged Draenei Racial)
+class spell_light_judgement : public SpellScript
+{
+
+    void HandleDamage(SpellEffIndex /*effIndex*/)
+    {
+        if (Unit* caster = GetCaster())
+            SetHitDamage(6.25f * caster->m_unitData->AttackPower);
+    }
+
+    void Register() override
+    {
+        OnEffectHitTarget += SpellEffectFn(spell_light_judgement::HandleDamage, EFFECT_0, SPELL_EFFECT_SCHOOL_DAMAGE);
+    }
+};
+
+//312372
+// 9.0.5
+class spell_back_camp : public SpellScript
+{
+
+    SpellCastResult CheckRequirement()
+    {
+        if (Unit* caster = GetCaster())
+            if (Player* player = caster->ToPlayer())
+                if (!player->GetStoredAuraTeleportLocation(313055))
+                {
+                    SetCustomCastResultMessage(SPELL_CUSTOM_ERROR_YOU_CANNOT_MAKE_YOUR_CAMP_HERE);
+                    return SPELL_FAILED_CUSTOM_ERROR;
+                }
+
+        return SPELL_CAST_OK;
+    }
+
+    void HandleTeleport()
+    {
+        Unit* caster = GetCaster();
+        if (!caster)
+            return;
+        Player* player = caster->ToPlayer();
+        if (!player)
+            return;
+        player->RemoveMovementImpairingAuras(false);
+
+        // Tente: 292769
+        // Sac: 276247
+        // campfire: 301125
+     //   if (WorldLocation const* dest = player->GetStoredAuraTeleportLocation(GetEffectInfo()->MiscValue))
+        {
+            uint32 spawntm = 300;
+            if (GameObject* tempGob = player->SummonGameObject(292769, *player, QuaternionData::fromEulerAnglesZYX(player->GetOrientation(), 0.0f, 0.0f), Seconds(spawntm)))
+                player->SetLastTargetedGO(tempGob->GetGUID().GetCounter());
+
+            if (GameObject* tempGob = player->SummonGameObject(276247, Position(player->GetPositionX() + 2.0f, player->GetPositionY() + 2.0f, player->GetPositionZ(), player->GetOrientation()), QuaternionData::fromEulerAnglesZYX(player->GetOrientation(), 0.0f, 0.0f), Seconds(spawntm)))
+                player->SetLastTargetedGO(tempGob->GetGUID().GetCounter());
+
+            if (GameObject* tempGob = player->SummonGameObject(301125, Position(player->GetPositionX() + -2.0f, player->GetPositionY() + -2.0f, player->GetPositionZ(), player->GetOrientation()), QuaternionData::fromEulerAnglesZYX(player->GetOrientation(), 0.0f, 0.0f), Seconds(spawntm)))
+                player->SetLastTargetedGO(tempGob->GetGUID().GetCounter());
+        }
+    }
+
+    void Register() override
+    {
+        OnCheckCast += SpellCheckCastFn(spell_back_camp::CheckRequirement);
+        AfterCast += SpellCastFn(spell_back_camp::HandleTeleport);
+    }
+};
+
+//312370
+class spell_make_camp : public SpellScript
+{
+
+    void Oncast()
+    {
+        Unit* caster = GetCaster();
+        if (!caster)
+            return;
+        float x = caster->GetPositionX();
+        float y = caster->GetPositionY();
+        float z = caster->GetPositionZ();
+        float o = caster->GetOrientation();
+
+        // Tente: 292769
+        // Sac: 276247
+        // campfire: 301125
+        Player* player = caster->ToPlayer();
+        if (!player)
+            return;
+
+        uint32 spawntm = 300;
+        if (GameObject* tempGob = player->SummonGameObject(292769, *player, QuaternionData::fromEulerAnglesZYX(player->GetOrientation(), 0.0f, 0.0f), Seconds(spawntm)))
+            player->SetLastTargetedGO(tempGob->GetGUID().GetCounter());
+
+        if (GameObject* tempGob = player->SummonGameObject(276247, Position(x + 2.0f, y + 2.0f, z, o), QuaternionData::fromEulerAnglesZYX(player->GetOrientation(), 0.0f, 0.0f), Seconds(spawntm)))
+            player->SetLastTargetedGO(tempGob->GetGUID().GetCounter());
+
+        if (GameObject* tempGob = player->SummonGameObject(301125, Position(x + -2.0f, y + -2.0f, z, o), QuaternionData::fromEulerAnglesZYX(player->GetOrientation(), 0.0f, 0.0f), Seconds(spawntm)))
+            player->SetLastTargetedGO(tempGob->GetGUID().GetCounter());
+    }
+
+    void Register()
+    {
+        OnCast += SpellCastFn(spell_make_camp::Oncast);
+    }
+};
+
+//274738
+class spell_maghar_orc_racial_ancestors_call : public SpellScript
+{
+
+    void Oncast()
+    {
+        Unit* caster = GetCaster();
+        if (!caster)
+            return;
+
+        uint32 RandomStats = urand(0, 3);
+
+        switch (RandomStats)
+        {
+        case 0:
+            //mastery
+            caster->CastSpell(nullptr, 274741, true);
+            break;
+
+        case 1:
+
+            //versatility
+            caster->CastSpell(nullptr, 274742, true);
+            break;
+
+        case 2:
+            //haste
+            caster->CastSpell(nullptr, 274740, true);
+            break;
+
+        case 3:
+            //crit
+            caster->CastSpell(nullptr, 274739, true);
+            break;
+        }
+    }
+
+    void Register() override
+    {
+        OnCast += SpellCastFn(spell_maghar_orc_racial_ancestors_call::Oncast);
+    }
 };
 
 void AddSC_generic_spell_scripts()
@@ -5559,4 +5905,16 @@ void AddSC_generic_spell_scripts()
     RegisterSpellScriptWithArgs(spell_gen_set_health, "spell_gen_set_health_1", 1);
     RegisterSpellScriptWithArgs(spell_gen_set_health, "spell_gen_set_health_100", 100);
     RegisterSpellScriptWithArgs(spell_gen_set_health, "spell_gen_set_health_500", 500);
+    RegisterSpellAndAuraScriptPair(spell_bg_defending_cart_aura, spell_bg_defending_cart_aura_AuraScript);
+    RegisterSpellScript(spell_gen_comfortable_riders_barding);
+    RegisterSpellScript(spell_gen_saddlechute);
+    RegisterSpellScript(spell_gen_spatial_rift);
+    RegisterAreaTriggerAI(at_gen_spatial_rift);
+
+    //Allied Race Spells
+    RegisterSpellScript(spell_arcane_pulse);
+    RegisterSpellScript(spell_light_judgement);
+    RegisterSpellScript(spell_make_camp);
+    RegisterSpellScript(spell_back_camp);
+    RegisterSpellScript(spell_maghar_orc_racial_ancestors_call);
 }

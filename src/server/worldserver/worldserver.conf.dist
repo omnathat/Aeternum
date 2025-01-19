@@ -175,15 +175,9 @@ MaxPingTime = 30
 WorldServerPort = 8085
 
 #
-#    InstanceServerPort
-#        Description: TCP port to for second world connection.
-#        Default:     8086
-
-InstanceServerPort = 8086
-
-#
 #    BindIP
 #        Description: Bind world server to IP/hostname.
+#                     Using IPv6 address (such as "::") will enable both IPv4 and IPv6 connections
 #        Default:     "0.0.0.0" - (Bind to all IPs on the system)
 
 BindIP = "0.0.0.0"
@@ -792,7 +786,7 @@ CharacterCreating.Disabled = 0
 #
 #    CharacterCreating.Disabled.RaceMask
 #        Description: Mask of races which cannot be created by players.
-#        Example:     1536 - (1024 + 512, Blood Elf and Draenei races are disabled)
+#        Example:     1536 - (512 + 1024, Blood Elf and Draenei races are disabled)
 #        Default:     0    - (Enabled, All races are allowed)
 #                     1    - (Disabled, Human)
 #                     2    - (Disabled, Orc)
@@ -809,6 +803,10 @@ CharacterCreating.Disabled = 0
 #                     4096 - (Disabled, Vulpera)
 #                     8192 - (Disabled, Maghar Orc)
 #                     16384 - (Disabled, Mechagnome)
+#                     32768 - (Disabled, Dracthyr Horde)
+#                     65536 - (Disabled, Dracthyr Alliance)
+#                     131072 - (Disabled, Earthen Horde)
+#                     262144 - (Disabled, Earthen Alliance)
 #                     2097152 - (Disabled, Worgen)
 #                     8388608 - (Disabled, Pandaren Neutral)
 #                     16777216 - (Disabled, Pandaren Alliance)
@@ -839,6 +837,7 @@ CharacterCreating.Disabled.RaceMask = 0
 #                     512  - (Disabled, Monk)
 #                     1024 - (Disabled, Druid)
 #                     2048 - (Disabled, Demon Hunter)
+#                     4096 - (Disabled, Evoker)
 
 CharacterCreating.Disabled.ClassMask = 0
 
@@ -907,9 +906,9 @@ SkipCinematics = 0
 #        Description: Maximum level that can be reached by players.
 #        Important:   Levels beyond 110 are not recommended at all.
 #        Range:       1-255
-#        Default:     70
+#        Default:     80
 
-MaxPlayerLevel = 70
+MaxPlayerLevel = 80
 
 #
 #    MinDualSpecLevel
@@ -946,9 +945,9 @@ StartDemonHunterPlayerLevel = 8
 #    StartEvokerPlayerLevel
 #        Description: Staring level for evokers after creation.
 #        Range:       1-MaxPlayerLevel
-#        Default:     58
+#        Default:     10
 
-StartEvokerPlayerLevel = 58
+StartEvokerPlayerLevel = 10
 
 #
 #    StartAlliedRacePlayerLevel
@@ -2588,13 +2587,6 @@ Rate.Auction.Cut     = 1
 #        Default:     1
 
 Rate.Honor = 1
-
-#
-#    Rate.Talent
-#        Description: Talent point rate.
-#        Default:     1
-
-Rate.Talent = 1
 
 #
 #    Rate.Reputation.Gain
@@ -4521,73 +4513,6 @@ Eluna.RequireCPaths = ""
 
 Roleplay.CustomNpc.OutfitIdStart = 200001
 Roleplay.CustomNpc.CreatureTemplateIdStart = 400000
-
-#
-###################################################################################################
-# TimeIsTime Module (If you use this module, you will not be able to keep track of real time. All events and times on the calendar will run differently)
-
-# Enable TimeIsTime
-# Settings: 0 = off, 1 = on
-# Default:  1
-
-TimeIsTime.Enable = 1
-
-# SpeedRate
-# Adjust the number of game days per real day by altering the Realm Timer
-# Settings: 60 is 1 second (Real Time) = 1 minute (Realm Timer)
-#           
-#           60.0  = 1 Game Day every 24   minutes
-#           30.0  = 1 Game Day every 48   minutes         
-#           15.0  = 1 Game Day every 96   minutes or 1.6  Hours
-#           7.5   = 1 Game Day every 192  minutes or 3.2  Hours
-#           3.75  = 1 Game Day every 384  minutes or 6.4  Hours        
-#           1.875 = 1 Game Day every 768  minutes or 12.8 Hours
-#           1.0   = 1 Game Day every 1440 minutes or 24.0 Hours (Realtime)
-# Default:  1.0 (Blizzlike)
-
-TimeIsTime.SpeedRate = 1.0
-
-# Start (client side) game clock at chosen Epoch (Unix) time at the same time each login
-# Default:  0  (Local Time)
-# Example:  https://i-leon.ru/tools/time 
-#           TimeIsTime.TimeStart = unix time
-#           TimeIsTime.HourOffset = your UTC
-#           Date on example   	  	 :: 06-01-2021
-#			Sunrise  	= 06:00:00   :: 1622516400
-#           Midday  	= 12:00:00   :: 1622538000
-#           Sunset	 	= 18:00:00   :: 1622559600
-#           Midnight	= 00:00:00   :: 1622581200
-
-TimeIsTime.TimeStart = 0
-TimeIsTime.HourOffset = 0.0
-
-#
-#####################################################################################################
-
-###################################################################################################
-# Advanced flying #
-#############
-#
-# Customize advanced flying rates
-#
-
-AdvFly.AirFriction = 1.5
-AdvFly.MaxVel = 65.0
-AdvFly.LiftCoef = 0.7
-AdvFly.DoubleJumpVelMod = 5.0
-AdvFly.GlideStartMinHeight = 7.5
-AdvFly.AddImpulseMaxSpeed = 100.0
-AdvFly.MinBankingRate = 140.0
-AdvFly.MaxBankingRate = 270.0
-AdvFly.MinPitchingRateDown = 180.0
-AdvFly.MaxPitchingRateDown = 360.0
-AdvFly.MinPitchingRateUp = 180.0
-AdvFly.MaxPitchingRateUp = 360.0
-AdvFly.MinTurnVelocityThreshold = 45.0
-AdvFly.MaxTurnVelocityThreshold = 65.0
-AdvFly.SurfaceFriction = 2.75
-AdvFly.OverMaxDeceleration = 7.0
-AdvFly.LaunchSpeedCoefficient = 0.4
 
 #
 ###################################################################################################

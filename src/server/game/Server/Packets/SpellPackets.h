@@ -235,7 +235,7 @@ namespace WorldPackets
             int32 ItemID = 0;
             int32 DataSlotIndex = 0;
             int32 Quantity = 0;
-            Optional<uint8> Unknown_1000;
+            Optional<uint8> Source;
         };
 
         struct SpellExtraCurrencyCost
@@ -406,8 +406,8 @@ namespace WorldPackets
         struct LearnedSpellInfo
         {
             int32 SpellID = 0;
-            bool IsFavorite = false;
-            Optional<int32> field_8;
+            bool Favorite = false;
+            Optional<int32> EquipableSpellInvSlot;
             Optional<int32> Superceded;
             Optional<int32> TraitDefinitionID;
         };
@@ -603,8 +603,8 @@ namespace WorldPackets
             int32 CategoryRecoveryTime = 0;
             float ModRate = 1.0f;
             bool OnHold = false;
-            Optional<uint32> unused622_1; ///< This field is not used for anything in the client in 6.2.2.20444
-            Optional<uint32> unused622_2; ///< This field is not used for anything in the client in 6.2.2.20444
+            Optional<int32> RecoveryTimeStartOffset;
+            Optional<int32> CategoryRecoveryTimeStartOffset;
         };
 
         class SendSpellHistory final : public ServerPacket
@@ -1007,7 +1007,7 @@ namespace WorldPackets
         class ResyncRunes final : public ServerPacket
         {
         public:
-            ResyncRunes(size_t size) : ServerPacket(SMSG_RESYNC_RUNES, 1 + 1 + 4 + size) { }
+            ResyncRunes(std::size_t size) : ServerPacket(SMSG_RESYNC_RUNES, 1 + 1 + 4 + size) { }
 
             WorldPacket const* Write() override;
 
@@ -1058,7 +1058,7 @@ namespace WorldPackets
 
             ObjectGuid Guid;
             ObjectGuid CastID;
-            uint16 MoveMsgID = 0;
+            uint32 MoveMsgID = 0;
             int32 SpellID = 0;
             float Pitch = 0.0f;
             float Speed = 0.0f;
@@ -1110,6 +1110,24 @@ namespace WorldPackets
             WorldPacket const* Write() override;
 
             uint32 Result = 0;
+        };
+
+        class ApplyMountEquipmentResult final : public ServerPacket
+        {
+        public:
+            enum ApplyResult : int32
+            {
+                Success = 0,
+                Failure = 1
+            };
+
+            ApplyMountEquipmentResult() : ServerPacket(SMSG_APPLY_MOUNT_EQUIPMENT_RESULT, 16 + 4 + 1) { }
+
+            WorldPacket const* Write() override;
+
+            ObjectGuid ItemGUID;
+            int32 ItemID = 0;
+            ApplyResult Result = Success;
         };
 
         class MissileCancel final : public ServerPacket

@@ -22,8 +22,11 @@
  */
 
 #include "Containers.h"
+#include "DB2Stores.h"
 #include "Player.h"
 #include "ScriptMgr.h"
+#include "AreaTrigger.h"
+#include "AreaTriggerAI.h"
 #include "Spell.h"
 #include "SpellAuraEffects.h"
 #include "SpellHistory.h"
@@ -57,6 +60,8 @@ enum EvokerSpells
     SPELL_EVOKER_PYRE_DAMAGE                    = 357212,
     SPELL_EVOKER_SCOURING_FLAME                 = 378438,
     SPELL_EVOKER_SOAR_RACIAL                    = 369536,
+    SPELL_EVOKER_VERDANT_EMBRACE_HEAL           = 361195,
+    SPELL_EVOKER_VERDANT_EMBRACE_JUMP           = 373514,
     SPELL_VISAGE                                = 372014,
     SPELL_ALTERED_FORM                          = 97709,
     SPELL_HATRED                                = 118328,
@@ -67,6 +72,11 @@ enum EvokerSpells
 enum EvokerSpellLabels
 {
     SPELL_LABEL_EVOKER_BLUE                 = 1465,
+};
+
+enum EvokerSpellVisuals
+{
+    SPELL_VISUAL_KIT_EVOKER_VERDANT_EMBRACE_JUMP    = 152557,
 };
 
 // 362969 - Azure Strike (blue)
@@ -193,7 +203,7 @@ class spell_evo_fire_breath_damage : public SpellScript
             && spellInfo->GetEffect(EFFECT_2).IsAura(SPELL_AURA_MOD_SILENCE); // validate we are removing the correct effect
     }
 
-    void AddBonusUpfrontDamage(Unit const* victim, int32& /*damage*/, int32& flatMod, float& /*pctMod*/) const
+    void AddBonusUpfrontDamage(SpellEffectInfo const& /*spellEffectInfo*/, Unit const* victim, int32& /*damage*/, int32& flatMod, float& /*pctMod*/) const
     {
         spell_evo_fire_breath::data const* params = std::any_cast<spell_evo_fire_breath::data>(&GetSpell()->m_customArg);
         if (!params)
@@ -368,42 +378,92 @@ class spell_evo_scouring_flame : public SpellScript
     }
 };
 
-// 369536 - Soar
-class spell_evo_soar : public SpellScript
+// 360995 - Verdant Embrace (Green)
+class spell_evo_verdant_embrace : public SpellScript
 {
-    PrepareSpellScript(spell_evo_soar);
-
     bool Validate(SpellInfo const* /*spellInfo*/) override
     {
-        return ValidateSpellInfo({ SPELL_EVOKER_SOAR_RACIAL, SPELL_SKYWARD_ASCENT, SPELL_SURGE_FORWARD });
+        return ValidateSpellInfo({ SPELL_EVOKER_VERDANT_EMBRACE_HEAL, SPELL_EVOKER_VERDANT_EMBRACE_JUMP })
+            && sSpellVisualKitStore.HasRecord(SPELL_VISUAL_KIT_EVOKER_VERDANT_EMBRACE_JUMP);
     }
 
-    void HandleOnHit(SpellEffIndex /*effIndex*/)
+    void HandleLaunchTarget(SpellEffIndex /*effIndex*/) const
     {
         Unit* caster = GetCaster();
-        if (!caster)
-            return;
+        Unit* target = GetHitUnit();
+        CastSpellExtraArgs args;
+        args.SetTriggerFlags(TRIGGERED_IGNORE_CAST_IN_PROGRESS | TRIGGERED_DONT_REPORT_CAST_ERROR);
+        args.SetTriggeringSpell(GetSpell());
 
-        // Increase flight speed by 830540%
-        caster->SetSpeedRate(MOVE_FLIGHT, 83054.0f);
-
-        Player* player = GetHitPlayer();
-        // Add "Skyward Ascent" and "Surge Forward" to the caster's spellbook
-        player->LearnSpell(SPELL_SKYWARD_ASCENT, false);
-        player->LearnSpell(SPELL_SURGE_FORWARD, false);
+        if (target != caster)
+        {
+            caster->CastSpell(target, SPELL_EVOKER_VERDANT_EMBRACE_JUMP, args);
+            caster->SendPlaySpellVisualKit(SPELL_VISUAL_KIT_EVOKER_VERDANT_EMBRACE_JUMP, 0, 0);
+        }
+        else
+            caster->CastSpell(caster, SPELL_EVOKER_VERDANT_EMBRACE_HEAL, args);
     }
 
     void Register() override
     {
-        OnEffectHitTarget += SpellEffectFn(spell_evo_soar::HandleOnHit, EFFECT_0, SPELL_EFFECT_DUMMY);
+        OnEffectLaunchTarget += SpellEffectFn(spell_evo_verdant_embrace::HandleLaunchTarget, EFFECT_0, SPELL_EFFECT_DUMMY);
+    }
+};
+
+// 396557 - Verdant Embrace
+class spell_evo_verdant_embrace_trigger_heal : public SpellScript
+{
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SPELL_EVOKER_VERDANT_EMBRACE_HEAL });
+    }
+
+    void HandleHitTarget(SpellEffIndex /*effIndex*/) const
+    {
+        GetHitUnit()->CastSpell(GetExplTargetUnit(), SPELL_EVOKER_VERDANT_EMBRACE_HEAL, CastSpellExtraArgsInit{
+            .TriggerFlags = TRIGGERED_IGNORE_CAST_IN_PROGRESS | TRIGGERED_DONT_REPORT_CAST_ERROR,
+            .TriggeringSpell = GetSpell()
+        });
+    }
+
+    void Register() override
+    {
+        OnEffectHitTarget += SpellEffectFn(spell_evo_verdant_embrace_trigger_heal::HandleHitTarget, EFFECT_0, SPELL_EFFECT_DUMMY);
+    }
+};
+
+// 369536 - Soar
+class spell_evo_soar : public SpellScript
+{
+    void HandleOnCast()
+    {
+        Unit* caster = GetCaster();
+        caster->GetMotionMaster()->MoveJump(caster->GetPositionX(), caster->GetPositionY(), caster->GetPositionZ() + 30.0f, 20.0f, 10.0f);
+    }
+    void HandleAfterCast()
+    {
+        Player* caster = GetCaster()->ToPlayer();
+
+        caster->CastSpell(caster, 430747, true);
+
+        float SURGE_SPEED = 30.0f;
+
+        float destX = caster->GetPositionX() + SURGE_SPEED * std::cos(caster->GetOrientation());
+        float destY = caster->GetPositionY() + SURGE_SPEED * std::sin(caster->GetOrientation());
+        float destZ = caster->GetPositionZ() + SURGE_SPEED * std::tan(caster->m_movementInfo.pitch);
+
+        caster->AddMoveImpulse(Position(destX - caster->GetPositionX(), destY - caster->GetPositionY(), destZ - caster->GetPositionZ()));
+    }
+    void Register() override
+    {
+        OnCast += SpellCastFn(spell_evo_soar::HandleOnCast);
+        AfterCast += SpellCastFn(spell_evo_soar::HandleAfterCast);
     }
 };
 
 // 351239 - Visage (Racial)
 class spell_evo_cosmic_visage : public SpellScript
 {
-    PrepareSpellScript(spell_evo_cosmic_visage);
-
     void HandleOnCast()
     {
         Unit* caster = GetCaster();
@@ -434,6 +494,32 @@ class spell_evo_cosmic_visage : public SpellScript
     }
 };
 
+// 359073 - Eternity Surge
+class spell_evo_eternity_surge : public SpellScript
+{
+    void OnComplete(int32 /*completedStageCount*/) const
+    {
+        GetCaster()->CastSpell(GetExplTargetUnit(), 359077, CastSpellExtraArgs()
+            .SetTriggeringSpell(GetSpell())
+            .SetTriggerFlags(TRIGGERED_IGNORE_CAST_IN_PROGRESS | TRIGGERED_DONT_REPORT_CAST_ERROR));
+    }
+    void Register() override
+    {
+        OnEmpowerCompleted += SpellOnEmpowerStageCompletedFn(spell_evo_eternity_surge::OnComplete);
+    }
+};
+
+// areatrigger 23318 - need sniff data on db
+struct at_evo_emerald_blossom : AreaTriggerAI
+{
+    at_evo_emerald_blossom(AreaTrigger* at) : AreaTriggerAI(at) { }
+    void OnRemove() override
+    {
+        if (Unit* caster = at->GetCaster())
+            caster->CastSpell(at->GetPosition(), 355916);
+    }
+};
+
 void AddSC_evoker_spell_scripts()
 {
     RegisterSpellScript(spell_evo_azure_strike);
@@ -446,8 +532,12 @@ void AddSC_evoker_spell_scripts()
     RegisterSpellScript(spell_evo_permeating_chill);
     RegisterSpellScript(spell_evo_pyre);
     RegisterSpellScript(spell_evo_scouring_flame);
+    RegisterSpellScript(spell_evo_verdant_embrace);
+    RegisterSpellScript(spell_evo_verdant_embrace_trigger_heal);
 
     //new
     RegisterSpellScript(spell_evo_soar);
     RegisterSpellScript(spell_evo_cosmic_visage);
+    RegisterSpellScript(spell_evo_eternity_surge);
+    RegisterAreaTriggerAI(at_evo_emerald_blossom);
 }

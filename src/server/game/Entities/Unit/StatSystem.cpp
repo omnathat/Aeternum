@@ -86,13 +86,30 @@ void Unit::UpdateDamagePhysical(WeaponAttackType attType)
     }
 }
 
+uint32 Unit::GetMaxVigor() const
+{
+    // Must be in "higher to lower" order
+    static constexpr std::array<uint32, 3> vigorTalentSpellIds = {
+        377922, // Beyond Infinity - 6
+        377921, // Dragonriding Learner - 5
+        377920, // Take to the Skies - 4
+    };
+
+    for (uint32 spellId : vigorTalentSpellIds)
+        if (Aura* talentAura = GetAura(spellId))
+            if (AuraEffect* auraEff = talentAura->GetEffect(EFFECT_1))
+                return auraEff->GetBaseAmount();
+
+    return 3;
+}
+
 int32 Unit::GetCreatePowerValue(Powers power) const
 {
     if (power == POWER_MANA)
         return GetCreateMana();
 
     if (power == POWER_ALTERNATE_MOUNT)
-        return 3;
+        return GetMaxVigor();
 
     if (PowerTypeEntry const* powerType = sDB2Manager.GetPowerTypeEntry(power))
         return powerType->MaxBasePower;
@@ -559,9 +576,6 @@ void Player::UpdateMastery()
         {
             for (AuraEffect* auraEff : aura->GetAuraEffects())
             {
-                if (!auraEff)
-                    continue;
-
                 float mult = auraEff->GetSpellEffectInfo().BonusCoefficient;
                 if (G3D::fuzzyEq(mult, 0.0f))
                     continue;
@@ -940,8 +954,6 @@ uint32 Creature::GetPowerIndex(Powers power) const
             return 3;
         case POWER_ALTERNATE_ENCOUNTER:
             return 4;
-        case POWER_ALTERNATE_MOUNT:
-            return 5;
         default:
             break;
     }

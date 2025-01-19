@@ -100,18 +100,18 @@ void WorldSession::SendSetTimeZoneInformation()
     WorldPackets::System::SetTimeZoneInformation packet;
     packet.ServerTimeTZ = clientSupportedTZ;
     packet.GameTimeTZ = clientSupportedTZ;
-    packet.ServerRegionalTZ = clientSupportedTZ;
+    packet.ServerRegionalTimeTZ = clientSupportedTZ;
     SendPacket(packet.Write());
 }
 
 void WorldSession::SendFeatureSystemStatusGlueScreen()
 {
     WorldPackets::System::FeatureSystemStatusGlueScreen features;
-    features.BpayStoreAvailable = false;
-    features.BpayStoreDisabledByParentalControls = false;
+    features.BpayStoreAvailable = true;
+    features.BpayStoreDisabledByParentalControls = true;
     features.CharUndeleteEnabled = sWorld->getBoolConfig(CONFIG_FEATURE_SYSTEM_CHARACTER_UNDELETE_ENABLED);
     features.BpayStoreEnabled = sWorld->getBoolConfig(CONFIG_FEATURE_SYSTEM_BPAY_STORE_ENABLED);
-    features.MaxCharactersPerRealm = sWorld->getIntConfig(CONFIG_CHARACTERS_PER_REALM);
+    features.MaxCharactersOnThisRealm = sWorld->getIntConfig(CONFIG_CHARACTERS_PER_REALM);
     features.MinimumExpansionLevel = EXPANSION_CLASSIC;
     features.MaximumExpansionLevel = sWorld->getIntConfig(CONFIG_EXPANSION);
 

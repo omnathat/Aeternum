@@ -38,6 +38,7 @@ class BattlegroundMap;
 class BattlegroundScript;
 class Channel;
 class Conversation;
+class ConversationAI;
 class Creature;
 class CreatureAI;
 class DynamicObject;
@@ -446,6 +447,15 @@ class TC_GAME_API CreatureScript : public ScriptObject
 
         ~CreatureScript();
 
+        // Called when an unit exits a vehicle
+        virtual void ModifyVehiclePassengerExitPos(Unit* /*passenger*/, Vehicle* /*vehicle*/, Position& /*pos*/) { }
+
+        // Called when a player completes a quest and is rewarded, opt is the selected item's index or 0
+        virtual bool OnQuestReward(Player* /*player*/, Creature* /*creature*/, Quest const* /*quest*/, uint32 /*opt*/) { return false; }
+
+        // Called when a player accepts a quest from the creature.
+        virtual bool OnQuestAccept(Player* /*player*/, Creature* /*creature*/, Quest const* /*quest*/) { return false; }
+
         // Called when a CreatureAI object is needed for the creature.
         virtual CreatureAI* GetAI(Creature* creature) const = 0;
 };
@@ -811,6 +821,19 @@ class TC_GAME_API PlayerScript : public ScriptObject
 
         // Called when a charge recovery cooldown start for that player
         virtual void OnChargeRecoveryTimeStart(Player* /*player*/, uint32 /*chargeCategoryId*/, int32& /*chargeRecoveryTime*/) { }
+
+        // Called at each player update
+        virtual void OnUpdate(Player* /*player*/, uint32 /*diff*/) { }
+
+        // Called when a player quits from a vehicle
+        virtual void OnPlayerExitVehicle(Player* /*player*/) { }
+
+        // Called when a player sits on a vehicle
+        virtual void OnPlayerEnterVehicle(Player* /*player*/) { }
+
+        virtual void OnSpellLearned(Player* /*player*/, uint32 /*spellID*/) { }
+
+        virtual void OnLogin(Player* /* player */) { }
 };
 
 class TC_GAME_API AccountScript : public ScriptObject
@@ -935,17 +958,8 @@ class TC_GAME_API ConversationScript : public ScriptObject
 
         ~ConversationScript();
 
-        // Called when Conversation is created but not added to Map yet.
-        virtual void OnConversationCreate(Conversation* conversation, Unit* creator);
-
-        // Called when Conversation is started
-        virtual void OnConversationStart(Conversation* conversation);
-
-        // Called when player sends CMSG_CONVERSATION_LINE_STARTED with valid conversation guid
-        virtual void OnConversationLineStarted(Conversation* conversation, uint32 lineId, Player* sender);
-
-        // Called for each update tick
-        virtual void OnConversationUpdate(Conversation* conversation, uint32 diff);
+        // Called when a ConversationAI object is needed for the conversation.
+        virtual ConversationAI* GetAI(Conversation* conversation) const;
 };
 
 class TC_GAME_API SceneScript : public ScriptObject
@@ -1263,6 +1277,10 @@ class TC_GAME_API ScriptMgr
         void OnPlayerSuccessfulSpellCast(Player* player, Spell* spell);
         void OnCooldownStart(Player* player, SpellInfo const* spellInfo, uint32 itemId, int32& cooldown, uint32& categoryId, int32& categoryCooldown);
         void OnChargeRecoveryTimeStart(Player* player, uint32 chargeCategoryId, int32& chargeRecoveryTime);
+        void OnPlayerEnterVehicle(Player* player);
+        void OnPlayerExitVehicle(Player* player);
+        void OnPlayerSpellLearned(Player* player, uint32 spellID);
+        void OnPlayerUpdate(Player* player, uint32 diff);
 
     public: /* AccountScript */
 
@@ -1311,10 +1329,8 @@ class TC_GAME_API ScriptMgr
 
     public: /* ConversationScript */
 
-        void OnConversationCreate(Conversation* conversation, Unit* creator);
-        void OnConversationStart(Conversation* conversation);
-        void OnConversationLineStarted(Conversation* conversation, uint32 lineId, Player* sender);
-        void OnConversationUpdate(Conversation* conversation, uint32 diff);
+        bool CanCreateConversationAI(uint32 scriptId) const;
+        ConversationAI* GetConversationAI(Conversation* conversation);
 
     public: /* SceneScript */
 
@@ -1344,6 +1360,9 @@ class TC_GAME_API ScriptMgr
         ScriptLoaderCallbackType _script_loader_callback;
 
         std::string _currentContext;
+
+    public:
+        bool OnQuestAccept(Player* player, Creature* creature, Quest const* quest);
 };
 
 namespace Trinity::SpellScripts
@@ -1392,6 +1411,15 @@ private:
 #define RegisterSpellAndAuraScriptPairWithArgs(script_1, script_2, script_name, ...) new GenericSpellAndAuraScriptLoader<BOOST_PP_REMOVE_PARENS(script_1), BOOST_PP_REMOVE_PARENS(script_2), decltype(std::make_tuple(__VA_ARGS__))>(script_name, std::make_tuple(__VA_ARGS__))
 #define RegisterSpellAndAuraScriptPair(script_1, script_2) RegisterSpellAndAuraScriptPairWithArgs(script_1, script_2, #script_1)
 
+template <class A>
+class GenericAuraScriptLoader : public SpellScriptLoader
+{
+public:
+    GenericAuraScriptLoader(char const* name) : SpellScriptLoader(name) { }
+    AuraScript* GetAuraScript() const override { return new A(); }
+};
+#define RegisterAuraScript(aura_script) new GenericAuraScriptLoader<aura_script>(#aura_script)
+
 template <class AI>
 class GenericCreatureScript : public CreatureScript
 {
@@ -1437,6 +1465,15 @@ class GenericAreaTriggerEntityScript : public AreaTriggerEntityScript
 };
 #define RegisterAreaTriggerAI(ai_name) new GenericAreaTriggerEntityScript<ai_name>(#ai_name)
 
+template <class AI>
+class GenericConversationScript : public ConversationScript
+{
+public:
+    GenericConversationScript(char const* name) : ConversationScript(name) {}
+    ConversationAI* GetAI(Conversation* conversation) const override { return new AI(conversation); }
+};
+#define RegisterConversationAI(ai_name) new GenericConversationScript<ai_name>(#ai_name)
+
 template<class Script>
 class GenericBattlegroundMapScript : public BattlegroundMapScript
 {
@@ -1448,5 +1485,22 @@ public:
 #define RegisterBattlegroundMapScript(script_name, mapId) new GenericBattlegroundMapScript<script_name>(#script_name, mapId)
 
 #define sScriptMgr ScriptMgr::instance()
+
+template <class AI>
+class GenericInstanceMapScript : public InstanceMapScript
+{
+public:
+    GenericInstanceMapScript(char const* name, uint32 mapId) : InstanceMapScript(name, mapId) { }
+    InstanceScript* GetInstanceScript(InstanceMap* map) const override { return new AI(map); }
+};
+#define RegisterInstanceScript(ai_name, mapId) new GenericInstanceMapScript<ai_name>(#ai_name, mapId)
+
+#define RegisterCreatureScript(script) new script()
+#define RegisterSceneScript(script) new script()
+#define RegisterQuestScript(script) new script()
+#define RegisterConversationScript(script) new script()
+#define RegisterPlayerScript(script) new script()
+#define RegisterZoneScript(script) new script()
+#define RegisterItemScript(script) new script()
 
 #endif

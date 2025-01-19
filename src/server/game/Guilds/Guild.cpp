@@ -377,7 +377,7 @@ void Guild::BankTab::LoadFromDB(Field* fields)
 
 bool Guild::BankTab::LoadItemFromDB(Field* fields)
 {
-    uint8 slotId = fields[54].GetUInt8();
+    uint8 slotId = fields[56].GetUInt8();
     ObjectGuid::LowType itemGuid = fields[0].GetUInt64();
     uint32 itemEntry = fields[1].GetUInt32();
     if (slotId >= GUILD_BANK_MAX_SLOTS)
@@ -2641,7 +2641,7 @@ void Guild::LoadBankTabFromDB(Field* fields)
 
 bool Guild::LoadBankItemFromDB(Field* fields)
 {
-    uint8 tabId = fields[53].GetUInt8();
+    uint8 tabId = fields[55].GetUInt8();
     if (tabId >= _GetPurchasedTabsSize())
     {
         TC_LOG_ERROR("guild", "Invalid tab for item (GUID: {}, id: #{}) in guild bank, skipped.",
@@ -3637,6 +3637,12 @@ void Guild::SendBankList(WorldSession* session, uint8 tabId, bool fullUpdate) co
     if (!member) // Shouldn't happen, just in case
         return;
 
+    // HACK: client doesn't query entire tab content if it had received SMSG_GUILD_BANK_LIST in this session
+    // but we broadcast bank updates to entire guild when *ANYONE* changes anything, incorrectly initializing clients
+    // tab content with only data for that change
+    if (!fullUpdate && tabId < _GetPurchasedTabsSize())
+        fullUpdate = true;
+
     WorldPackets::Guild::GuildBankQueryResults packet;
 
     packet.Money = m_bankMoney;
@@ -3678,7 +3684,7 @@ void Guild::SendBankList(WorldSession* session, uint8 tabId, bool fullUpdate) co
                     WorldPackets::Guild::GuildBankItemInfo& itemInfo = packet.ItemInfo.emplace_back();
 
                     itemInfo.Slot = int32(slotId);
-                    itemInfo.Item.ItemID = tabItem->GetEntry();
+                    itemInfo.Item.Initialize(tabItem);
                     itemInfo.Count = int32(tabItem->GetCount());
                     itemInfo.Charges = int32(abs(tabItem->GetSpellCharges()));
                     itemInfo.EnchantmentID = int32(tabItem->GetEnchantmentId(PERM_ENCHANTMENT_SLOT));

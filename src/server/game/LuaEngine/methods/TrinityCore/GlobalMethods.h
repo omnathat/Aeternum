@@ -574,7 +574,7 @@ namespace LuaGlobalFunctions
 
         MountEntry const* mountEntry = sDB2Manager.GetMount(spellId);
         uint32 displayId = 0;
-        if (!mountEntry->IsSelfMount())
+        if (!mountEntry->GetFlags().HasFlag(MountFlags::IsSelfMount))
         {
             DB2Manager::MountXDisplayContainer const* mountDisplays = sDB2Manager.GetMountDisplays(mountEntry->ID);
             DB2Manager::MountXDisplayContainer usableDisplays;
@@ -1872,7 +1872,7 @@ namespace LuaGlobalFunctions
     {
         uint32 opcode = E->CHECKVAL<uint32>(1);
         size_t size = E->CHECKVAL<size_t>(2);
-        if (opcode >= MAX_CMSG_OPCODE_NUMBER)
+        if (opcode >= NUM_CMSG_OPCODES)
             return luaL_argerror(E->L, 1, "valid opcode expected");
 
         E->Push(new WorldPacket((OpcodesList)opcode, size));

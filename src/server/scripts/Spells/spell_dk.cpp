@@ -39,6 +39,7 @@
 
 enum DeathKnightSpells
 {
+    SPELL_DK_ANTI_MAGIC_BARRIER                 = 205727,
     SPELL_DK_ARMY_FLESH_BEAST_TRANSFORM         = 127533,
     SPELL_DK_ARMY_GEIST_TRANSFORM               = 127534,
     SPELL_DK_ARMY_NORTHREND_SKELETON_TRANSFORM  = 127528,
@@ -52,14 +53,18 @@ enum DeathKnightSpells
     SPELL_DK_BLOOD_SHIELD_MASTERY               = 77513,
     SPELL_DK_BONE_SHIELD                        = 195181,
     SPELL_DK_BREATH_OF_SINDRAGOSA               = 152279,
+    SPELL_DK_BRITTLE_DEBUFF                     = 374557,
+    SPELL_DK_CLEAVING_STRIKES                   = 316916,
     SPELL_DK_CORPSE_EXPLOSION_TRIGGERED         = 43999,
     SPELL_DK_DARK_SIMULACRUM_BUFF               = 77616,
     SPELL_DK_DARK_SIMULACRUM_SPELLPOWER_BUFF    = 94984,
     SPELL_DK_DEATH_AND_DECAY_DAMAGE             = 52212,
+    SPELL_DK_DEATH_AND_DECAY_INCREASE_TARGETS   = 188290,
     SPELL_DK_DEATH_COIL_DAMAGE                  = 47632,
     SPELL_DK_DEATH_GRIP_DUMMY                   = 243912,
     SPELL_DK_DEATH_GRIP_JUMP                    = 49575,
     SPELL_DK_DEATH_GRIP_TAUNT                   = 51399,
+    SPELL_DK_DEATH_STRIKE_ENABLER               = 89832, // Server Side
     SPELL_DK_DEATH_STRIKE_HEAL                  = 45470,
     SPELL_DK_DEATH_STRIKE_OFFHAND               = 66188,
     SPELL_DK_FESTERING_WOUND                    = 194310,
@@ -70,6 +75,11 @@ enum DeathKnightSpells
     SPELL_DK_GLYPH_OF_FOUL_MENAGERIE            = 58642,
     SPELL_DK_GLYPH_OF_THE_GEIST                 = 58640,
     SPELL_DK_GLYPH_OF_THE_SKELETON              = 146652,
+    SPELL_DK_GOREFIENDS_GRASP                   = 108199,
+    SPELL_DK_HEARTBREAKER_ENERGIZE              = 210738,
+    SPELL_DK_HEARTBREAKER_TALENT                = 221536,
+    SPELL_DK_ICE_PRISON_ROOT                    = 454787,
+    SPELL_DK_ICE_PRISON_TALENT                  = 454786,
     SPELL_DK_KILLING_MACHINE_PROC               = 51124,
     SPELL_DK_MARK_OF_BLOOD_HEAL                 = 206945,
     SPELL_DK_NECROSIS_EFFECT                    = 216974,
@@ -77,20 +87,22 @@ enum DeathKnightSpells
     SPELL_DK_OBLITERATION_RUNE_ENERGIZE         = 281327,
     SPELL_DK_PILLAR_OF_FROST                    = 51271,
     SPELL_DK_RAISE_DEAD_SUMMON                  = 52150,
+    SPELL_DK_REAPER_OF_SOULS_PROC               = 469172,
     SPELL_DK_RECENTLY_USED_DEATH_STRIKE         = 180612,
+    SPELL_DK_RUNIC_CORRUPTION                   = 51460,
     SPELL_DK_RUNIC_POWER_ENERGIZE               = 49088,
     SPELL_DK_RUNIC_RETURN                       = 61258,
     SPELL_DK_SLUDGE_BELCHER                     = 207313,
     SPELL_DK_SLUDGE_BELCHER_SUMMON              = 212027,
-    SPELL_DK_DEATH_STRIKE_ENABLER               = 89832, // Server Side
-    SPELL_DK_TIGHTENING_GRASP                   = 206970,
-    //SPELL_DK_TIGHTENING_GRASP_SLOW              = 143375, // dropped in BfA
+    SPELL_DK_SMOTHERING_OFFENSE                 = 435005,
+    SPELL_DK_SOUL_REAPER                        = 343294,
+    SPELL_DK_SOUL_REAPER_DAMAGE                 = 343295,
+    SPELL_DK_SUBDUING_GRASP_DEBUFF              = 454824,
+    SPELL_DK_SUBDUING_GRASP_TALENT              = 454822,
     SPELL_DK_UNHOLY                             = 137007,
     SPELL_DK_UNHOLY_GROUND_HASTE                = 374271,
     SPELL_DK_UNHOLY_GROUND_TALENT               = 374265,
     SPELL_DK_UNHOLY_VIGOR                       = 196263,
-    SPELL_DK_VOLATILE_SHIELDING                 = 207188,
-    SPELL_DK_VOLATILE_SHIELDING_DAMAGE          = 207194,
 
     SPELL_DK_GLYPH_OF_ABSORB_MAGIC              = 159415,
     SPELL_DK_NECROSIS                           = 207346,
@@ -111,6 +123,11 @@ enum DeathKnightSpells
     SPELL_DK_DARK_INFUSION_STACKS               = 91342,
     SPELL_DK_EPIDEMIC_DAMAGE_SINGLE             = 212739,
     SPELL_DK_EPIDEMIC_DAMAGE_AOE                = 215969,
+    SPELL_DK_ALL_WILL_SERVE                     = 194916,
+    SPELL_DK_ALL_WILL_SERVE_SUMMON              = 196910,
+    SPELL_DK_ARMY_OF_THE_DAMNED                 = 276837,
+    SPELL_DK_ARMY_OF_THE_DEAD                   = 42650,
+    SPELL_DK_APOCALYPSE                         = 275699,
 };
 
 enum Misc
@@ -158,8 +175,8 @@ public:
 
     bool Validate(SpellInfo const* spellInfo) override
     {
-        return ValidateSpellInfo({ SPELL_DK_RUNIC_POWER_ENERGIZE, SPELL_DK_VOLATILE_SHIELDING })
-            && ValidateSpellEffect({ { spellInfo->Id, EFFECT_1 } });
+        return ValidateSpellInfo({ SPELL_DK_RUNIC_POWER_ENERGIZE })
+            && ValidateSpellEffect({ { spellInfo->Id, EFFECT_1 }, { SPELL_DK_ANTI_MAGIC_BARRIER, EFFECT_2 } });
     }
 
     bool Load() override
@@ -174,6 +191,9 @@ public:
     {
         amount = CalculatePct(maxHealth, absorbPct);
 
+        if (AuraEffect* const antiMagicBarrier = GetCaster()->GetAuraEffect(SPELL_DK_ANTI_MAGIC_BARRIER, EFFECT_2))
+            AddPct(amount, antiMagicBarrier->GetAmount());
+
         if (Player const* player = GetUnitOwner()->ToPlayer())
             AddPct(amount, player->GetRatingBonusValue(CR_VERSATILITY_DAMAGE_DONE) + player->GetTotalAuraModifier(SPELL_AURA_MOD_VERSATILITY));
     }
@@ -182,35 +202,53 @@ public:
     {
         absorbedAmount += absorbAmount;
 
-        if (!GetTarget()->HasAura(SPELL_DK_VOLATILE_SHIELDING))
-        {
-            CastSpellExtraArgs args(aurEff);
-            args.AddSpellMod(SPELLVALUE_BASE_POINT0, CalculatePct(absorbAmount, 2 * absorbAmount * 100 / maxHealth));
-            GetTarget()->CastSpell(GetTarget(), SPELL_DK_RUNIC_POWER_ENERGIZE, args);
-        }
-    }
-
-    void HandleEffectRemove(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
-    {
-        if (AuraEffect const* volatileShielding = GetTarget()->GetAuraEffect(SPELL_DK_VOLATILE_SHIELDING, EFFECT_1))
-        {
-            CastSpellExtraArgs args(volatileShielding);
-            args.AddSpellMod(SPELLVALUE_BASE_POINT0, CalculatePct(absorbedAmount, volatileShielding->GetAmount()));
-            GetTarget()->CastSpell(nullptr, SPELL_DK_VOLATILE_SHIELDING_DAMAGE, args);
-        }
+        CastSpellExtraArgs args(aurEff);
+        args.AddSpellMod(SPELLVALUE_BASE_POINT0, CalculatePct(absorbAmount, 2 * absorbAmount * 100 / maxHealth));
+        GetTarget()->CastSpell(GetTarget(), SPELL_DK_RUNIC_POWER_ENERGIZE, args);
     }
 
     void Register() override
     {
         DoEffectCalcAmount += AuraEffectCalcAmountFn(spell_dk_anti_magic_shell::CalculateAmount, EFFECT_0, SPELL_AURA_SCHOOL_ABSORB);
         AfterEffectAbsorb += AuraEffectAbsorbFn(spell_dk_anti_magic_shell::Trigger, EFFECT_0);
-        AfterEffectRemove += AuraEffectRemoveFn(spell_dk_anti_magic_shell::HandleEffectRemove, EFFECT_0, SPELL_AURA_SCHOOL_ABSORB, AURA_EFFECT_HANDLE_REAL);
     }
 
 private:
     int32 absorbPct;
     int32 maxHealth;
     uint32 absorbedAmount;
+};
+
+// 195182 - Marrowrend
+// 195292 - Death's Caress
+class spell_dk_apply_bone_shield : public SpellScript
+{
+public:
+    explicit spell_dk_apply_bone_shield(SpellEffIndex effIndex) : _effIndex(effIndex) { }
+
+    bool Validate(SpellInfo const* spellInfo) override
+    {
+        return ValidateSpellInfo({ SPELL_DK_BONE_SHIELD })
+            && ValidateSpellEffect({ { spellInfo->Id, _effIndex } })
+            && spellInfo->GetEffect(_effIndex).CalcBaseValue(nullptr, nullptr, 0, 0) <= int32(sSpellMgr->AssertSpellInfo(SPELL_DK_BONE_SHIELD, DIFFICULTY_NONE)->StackAmount);
+    }
+
+    void HandleHitTarget(SpellEffIndex /*effIndex*/) const
+    {
+        Unit* caster = GetCaster();
+        for (int32 i = 0; i < GetEffectValue(); ++i)
+            caster->CastSpell(caster, SPELL_DK_BONE_SHIELD, CastSpellExtraArgs()
+                .SetTriggerFlags(TRIGGERED_IGNORE_CAST_IN_PROGRESS | TRIGGERED_DONT_REPORT_CAST_ERROR)
+                .SetTriggeringSpell(GetSpell()));
+    }
+
+    void Register() override
+    {
+        OnEffectHit += SpellEffectFn(spell_dk_apply_bone_shield::HandleHitTarget, _effIndex, SPELL_EFFECT_DUMMY);
+    }
+
+private:
+    SpellEffIndex _effIndex;
 };
 
 static uint32 const ArmyTransforms[]
@@ -294,6 +332,27 @@ class spell_dk_blood_boil : public SpellScript
     void Register() override
     {
         OnHit += SpellHitFn(spell_dk_blood_boil::HandleEffect);
+    }
+};
+
+// 374504 - Brittle
+class spell_dk_brittle : public AuraScript
+{
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SPELL_DK_BRITTLE_DEBUFF });
+    }
+
+    void HandleProc(AuraEffect const* /*aurEff*/, ProcEventInfo const& eventInfo) const
+    {
+        GetTarget()->CastSpell(eventInfo.GetActionTarget(), SPELL_DK_BRITTLE_DEBUFF, CastSpellExtraArgsInit{
+            .TriggerFlags = TRIGGERED_IGNORE_CAST_IN_PROGRESS | TRIGGERED_DONT_REPORT_CAST_ERROR
+        });
+    }
+
+    void Register() override
+    {
+        OnEffectProc += AuraEffectProcFn(spell_dk_brittle::HandleProc, EFFECT_0, SPELL_AURA_DUMMY);
     }
 };
 
@@ -431,6 +490,25 @@ class spell_dk_death_and_decay : public AuraScript
     }
 };
 
+// 188290 - Death and Decay (triggered by 316916 - Cleaving Strikes)
+class spell_dk_death_and_decay_increase_targets : public AuraScript
+{
+    bool Validate(SpellInfo const* /*spell*/) override
+    {
+        return ValidateSpellInfo({ SPELL_DK_UNHOLY_GROUND_HASTE });
+    }
+
+    void OnRemove(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/) const
+    {
+        GetTarget()->RemoveAurasDueToSpell(SPELL_DK_UNHOLY_GROUND_HASTE);
+    }
+
+    void Register() override
+    {
+        AfterEffectRemove += AuraEffectRemoveFn(spell_dk_death_and_decay_increase_targets::OnRemove, EFFECT_0, SPELL_AURA_DUMMY, AURA_EFFECT_HANDLE_REAL);
+    }
+};
+
 // 47541 - Death Coil
 class spell_dk_death_coil : public SpellScript
 {
@@ -445,6 +523,15 @@ class spell_dk_death_coil : public SpellScript
         caster->CastSpell(GetHitUnit(), SPELL_DK_DEATH_COIL_DAMAGE, true);
         if (AuraEffect const* unholyAura = caster->GetAuraEffect(SPELL_DK_UNHOLY, EFFECT_6)) // can be any effect, just here to send SPELL_FAILED_DONT_REPORT on failure
             caster->CastSpell(caster, SPELL_DK_UNHOLY_VIGOR, unholyAura);
+
+        if (GetCaster()->HasAura(SPELL_DK_ARMY_OF_THE_DAMNED))
+        {
+            if (GetCaster()->GetSpellHistory()->HasCooldown(SPELL_DK_ARMY_OF_THE_DEAD))
+                GetCaster()->GetSpellHistory()->ModifyCooldown(SPELL_DK_ARMY_OF_THE_DEAD, -5000ms);
+
+            if (GetCaster()->GetSpellHistory()->HasCooldown(SPELL_DK_APOCALYPSE))
+                GetCaster()->GetSpellHistory()->ModifyCooldown(SPELL_DK_APOCALYPSE, -1000ms);
+        }
     }
 
     void Register() override
@@ -470,8 +557,45 @@ class spell_dk_death_gate : public SpellScript
     void HandleScript(SpellEffIndex effIndex)
     {
         PreventHitDefaultEffect(effIndex);
-        if (Unit* target = GetHitUnit())
-            target->CastSpell(target, GetEffectValue(), false);
+        Unit* target = GetHitUnit();
+        if (!target)
+            return;
+
+        if (Player* player = target->ToPlayer())
+        {
+            if (player->IsManualRecallPositionValid())
+            {
+                player->ManualRecall();
+                player->ClearManualRecallPosition();
+                return;
+            }
+            else
+            {
+                player->SaveManualRecallPosition();
+            }
+
+            int QUEST_SCARLET_ARMIES_APPROACH = 12757; // only time death gate teles to classic ebon hold.
+            int QUEST_LIGHT_OF_DAWN = 12801; // lights hope chappel fight. after this death gate teles to final phase of classic ebon hold.
+            int QUEST_THE_BATTLE_FOR_EBON_HOLD = 13166;
+            /* If player is over level 45 tele to legion ebon hold */
+            if (player->GetLevel() >= 45 || (player->GetQuestStatus(QUEST_THE_BATTLE_FOR_EBON_HOLD) == QUEST_STATUS_REWARDED))
+            {
+                player->TeleportTo(1220, -1503.367f, 1052.059f, 260.396f, 3.75f); // legion ebon hold
+            }
+
+            /* If on quest 12757 "Scarlet enemies approach" */
+            else if ((player->GetQuestStatus(QUEST_LIGHT_OF_DAWN) == QUEST_STATUS_NONE) && (player->GetQuestStatus(QUEST_SCARLET_ARMIES_APPROACH) == QUEST_STATUS_NONE) && (!player->IsAlliedRace())
+                || (player->HasQuest(QUEST_SCARLET_ARMIES_APPROACH) || (player->IsAlliedRace())))
+            {
+                player->TeleportTo(609, 2368.0444f, -5656.1748f, 382.2804f, 3.74f); // classic ebon hold
+            }
+
+            /* If quest 12801 "Light of Dawn" is completed*/
+            else if ((player->GetQuestStatus(QUEST_LIGHT_OF_DAWN) == QUEST_STATUS_REWARDED) && (player->GetQuestStatus(QUEST_SCARLET_ARMIES_APPROACH) == QUEST_STATUS_REWARDED))
+            {
+                player->TeleportTo(0, 2368.0444f, -5656.1748f, 382.2804f, 3.735f); // final phase of classic ebon hold
+            }
+        }
     }
 
     void Register() override
@@ -651,6 +775,20 @@ class spell_dk_festering_strike : public SpellScript
     }
 };
 
+// 195621 - Frost Fever
+class spell_dk_frost_fever_proc : public AuraScript
+{
+    bool CheckProc(AuraEffect const* aurEff, ProcEventInfo const& /*eventInfo*/) const
+    {
+        return roll_chance_i(aurEff->GetAmount());
+    }
+
+    void Register() override
+    {
+        DoCheckEffectProc += AuraCheckEffectProcFn(spell_dk_frost_fever_proc::CheckProc, EFFECT_0, SPELL_AURA_PROC_TRIGGER_SPELL);
+    }
+};
+
 // 47496 - Explode, Ghoul spell for Corpse Explosion
 class spell_dk_ghoul_explode : public SpellScript
 {
@@ -718,6 +856,32 @@ class spell_dk_glyph_of_scourge_strike_script : public SpellScript
     }
 };
 
+// Called by 206930 - Heart Strike
+class spell_dk_heartbreaker : public SpellScript
+{
+    bool Validate(SpellInfo const* /*spell*/) override
+    {
+        return ValidateSpellInfo({ SPELL_DK_HEARTBREAKER_TALENT, SPELL_DK_HEARTBREAKER_ENERGIZE });
+    }
+
+    bool Load() override
+    {
+        return GetCaster()->HasAura(SPELL_DK_HEARTBREAKER_TALENT);
+    }
+
+    void HandleEnergize(SpellEffIndex /*effIndex*/)
+    {
+        GetCaster()->CastSpell(GetCaster(), SPELL_DK_HEARTBREAKER_ENERGIZE, CastSpellExtraArgs()
+            .SetTriggeringSpell(GetSpell())
+            .SetTriggerFlags(TRIGGERED_IGNORE_CAST_IN_PROGRESS | TRIGGERED_DONT_REPORT_CAST_ERROR));
+    }
+
+    void Register() override
+    {
+        OnEffectHitTarget += SpellEffectFn(spell_dk_heartbreaker::HandleEnergize, EFFECT_0, SPELL_EFFECT_DUMMY);
+    }
+};
+
 // 49184 - Howling Blast
 class spell_dk_howling_blast : public SpellScript
 {
@@ -734,6 +898,71 @@ class spell_dk_howling_blast : public SpellScript
     void Register() override
     {
         OnEffectHitTarget += SpellEffectFn(spell_dk_howling_blast::HandleFrostFever, EFFECT_0, SPELL_EFFECT_SCHOOL_DAMAGE);
+    }
+};
+
+// Called by 45524 - Chains of Ice
+// 454786 - Ice Prison
+class spell_dk_ice_prison : public SpellScript
+{
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SPELL_DK_ICE_PRISON_TALENT, SPELL_DK_ICE_PRISON_ROOT });
+    }
+
+    bool Load() override
+    {
+        return GetCaster()->HasAura(SPELL_DK_ICE_PRISON_TALENT);
+    }
+
+    void HandleOnHit() const
+    {
+        GetCaster()->CastSpell(GetHitUnit(), SPELL_DK_ICE_PRISON_ROOT, CastSpellExtraArgsInit{
+            .TriggerFlags = TRIGGERED_IGNORE_CAST_IN_PROGRESS | TRIGGERED_DONT_REPORT_CAST_ERROR,
+            .TriggeringSpell = GetSpell()
+        });
+    }
+
+    void Register() override
+    {
+        OnHit += SpellHitFn(spell_dk_ice_prison::HandleOnHit);
+    }
+};
+
+// 194878 - Icy Talons
+class spell_dk_icy_talons : public AuraScript
+{
+    bool CheckProc(AuraEffect const* /*aurEff*/, ProcEventInfo const& eventInfo) const
+    {
+        if (Spell const* procSpell = eventInfo.GetProcSpell())
+            return procSpell->GetPowerTypeCostAmount(POWER_RUNIC_POWER) > 0;
+
+        return false;
+    }
+
+    void Register() override
+    {
+        DoCheckEffectProc += AuraCheckEffectProcFn(spell_dk_icy_talons::CheckProc, EFFECT_0, SPELL_AURA_PROC_TRIGGER_SPELL_WITH_VALUE);
+    }
+};
+
+// 194879 - Icy Talons
+class spell_dk_icy_talons_buff : public SpellScript
+{
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SPELL_DK_SMOTHERING_OFFENSE });
+    }
+
+    void HandleSmotheringOffense(WorldObject*& target) const
+    {
+        if (!GetCaster()->HasAura(SPELL_DK_SMOTHERING_OFFENSE))
+            target = nullptr;
+    }
+
+    void Register() override
+    {
+        OnObjectTargetSelect += SpellObjectTargetSelectFn(spell_dk_icy_talons_buff::HandleSmotheringOffense, EFFECT_1, TARGET_UNIT_CASTER);
     }
 };
 
@@ -913,21 +1142,56 @@ class spell_dk_raise_dead : public SpellScript
 {
     bool Validate(SpellInfo const* /*spellInfo*/) override
     {
-        return ValidateSpellInfo({ SPELL_DK_RAISE_DEAD_SUMMON, SPELL_DK_SLUDGE_BELCHER, SPELL_DK_SLUDGE_BELCHER_SUMMON });
+        return ValidateSpellInfo({ SPELL_DK_RAISE_DEAD_SUMMON });
     }
 
     void HandleDummy(SpellEffIndex /*effIndex*/)
     {
         uint32 spellId = SPELL_DK_RAISE_DEAD_SUMMON;
-        if (GetCaster()->HasAura(SPELL_DK_SLUDGE_BELCHER))
-            spellId = SPELL_DK_SLUDGE_BELCHER_SUMMON;
-
         GetCaster()->CastSpell(nullptr, spellId, true);
+
+        // The skeleton does not disappear after you release the pet
+        if (GetCaster()->HasAura(SPELL_DK_ALL_WILL_SERVE))
+            GetCaster()->CastSpell(GetCaster(), SPELL_DK_ALL_WILL_SERVE_SUMMON, true);
     }
 
     void Register() override
     {
         OnEffectHitTarget += SpellEffectFn(spell_dk_raise_dead::HandleDummy, EFFECT_0, SPELL_EFFECT_DUMMY);
+    }
+};
+
+// 440002 - Reaper of Souls (attached to 343294 - Soul Reaper)
+class spell_dk_reaper_of_souls : public SpellScript
+{
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SPELL_DK_REAPER_OF_SOULS_PROC });
+    }
+
+    bool IsAffectedByReaperOfSouls() const
+    {
+        if (Aura* reaperOfSouls = GetCaster()->GetAura(SPELL_DK_REAPER_OF_SOULS_PROC))
+            return GetSpell()->m_appliedMods.contains(reaperOfSouls);
+        return false;
+    }
+
+    void HandleDefault(WorldObject*& target) const
+    {
+        if (IsAffectedByReaperOfSouls())
+            target = nullptr;
+    }
+
+    void HandleReaperOfSouls(SpellEffIndex effIndex)
+    {
+        if (!IsAffectedByReaperOfSouls())
+            PreventHitDefaultEffect(effIndex);
+    }
+
+    void Register() override
+    {
+        OnObjectTargetSelect += SpellObjectTargetSelectFn(spell_dk_reaper_of_souls::HandleDefault, EFFECT_1, TARGET_UNIT_TARGET_ENEMY);
+        OnEffectLaunch += SpellEffectFn(spell_dk_reaper_of_souls::HandleReaperOfSouls, EFFECT_3, SPELL_EFFECT_TRIGGER_SPELL);
     }
 };
 
@@ -951,6 +1215,91 @@ class spell_dk_rime : public AuraScript
     void Register() override
     {
         DoCheckEffectProc += AuraCheckEffectProcFn(spell_dk_rime::CheckProc, EFFECT_0, SPELL_AURA_PROC_TRIGGER_SPELL);
+    }
+};
+
+// 343294 - Soul Reaper
+// 469180 - Soul Reaper
+class spell_dk_soul_reaper : public AuraScript
+{
+public:
+    explicit spell_dk_soul_reaper(SpellEffIndex auraEffectIndex, Optional<SpellEffIndex> healthLimitEffectIndex)
+        : _auraEffectIndex(auraEffectIndex), _healthLimitEffectIndex(healthLimitEffectIndex) { }
+
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SPELL_DK_SOUL_REAPER, SPELL_DK_SOUL_REAPER_DAMAGE, SPELL_DK_RUNIC_CORRUPTION });
+    }
+
+    void HandleOnTick(AuraEffect const* aurEff) const
+    {
+        Unit* target = GetTarget();
+        Unit* caster = GetCaster();
+        if (!caster)
+            return;
+
+        if (!_healthLimitEffectIndex || target->GetHealthPct() < float(GetEffectInfo(*_healthLimitEffectIndex).CalcValue(caster)))
+            caster->CastSpell(target, SPELL_DK_SOUL_REAPER_DAMAGE, CastSpellExtraArgsInit{
+                .TriggerFlags = TRIGGERED_IGNORE_CAST_IN_PROGRESS | TRIGGERED_DONT_REPORT_CAST_ERROR,
+                .TriggeringAura = aurEff
+            });
+    }
+
+    void RemoveEffect(AuraEffect const* aurEff, AuraEffectHandleModes /*mode*/) const
+    {
+        if (GetTargetApplication()->GetRemoveMode() != AURA_REMOVE_BY_DEATH)
+            return;
+
+        Player* caster = Object::ToPlayer(GetCaster());
+        if (!caster)
+            return;
+
+        if (caster->isHonorOrXPTarget(GetTarget()))
+            caster->CastSpell(caster, SPELL_DK_RUNIC_CORRUPTION, CastSpellExtraArgsInit{
+                .TriggerFlags = TRIGGERED_IGNORE_CAST_IN_PROGRESS | TRIGGERED_DONT_REPORT_CAST_ERROR,
+                .TriggeringAura = aurEff
+            });
+    }
+
+    void Register() override
+    {
+        OnEffectPeriodic += AuraEffectPeriodicFn(spell_dk_soul_reaper::HandleOnTick, _auraEffectIndex, SPELL_AURA_PERIODIC_DUMMY);
+        AfterEffectRemove += AuraEffectRemoveFn(spell_dk_soul_reaper::RemoveEffect, _auraEffectIndex, SPELL_AURA_PERIODIC_DUMMY, AURA_EFFECT_HANDLE_REAL);
+    }
+
+private:
+    SpellEffIndex _auraEffectIndex;
+    Optional<SpellEffIndex> _healthLimitEffectIndex;
+};
+
+// Called by 383312 Abomination Limb and 49576 - Death Grip
+// 454822 - Subduing Grasp
+class spell_dk_subduing_grasp : public SpellScript
+{
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SPELL_DK_SUBDUING_GRASP_TALENT, SPELL_DK_SUBDUING_GRASP_DEBUFF });
+    }
+
+    bool Load() override
+    {
+        return GetCaster()->HasAura(SPELL_DK_SUBDUING_GRASP_TALENT);
+    }
+
+    void HandleSubduingGrasp(SpellEffIndex /*effIndex*/) const
+    {
+        GetCaster()->CastSpell(GetHitUnit(), SPELL_DK_SUBDUING_GRASP_DEBUFF, CastSpellExtraArgsInit{
+            .TriggerFlags = TRIGGERED_IGNORE_CAST_IN_PROGRESS | TRIGGERED_DONT_REPORT_CAST_ERROR,
+            .TriggeringSpell = GetSpell()
+        });
+    }
+
+    void Register() override
+    {
+        if (m_scriptSpellId == SPELL_DK_GOREFIENDS_GRASP)
+            OnEffectHitTarget += SpellEffectFn(spell_dk_subduing_grasp::HandleSubduingGrasp, EFFECT_1, SPELL_EFFECT_SCRIPT_EFFECT);
+        else
+            OnEffectHitTarget += SpellEffectFn(spell_dk_subduing_grasp::HandleSubduingGrasp, EFFECT_0, SPELL_EFFECT_SCRIPT_EFFECT);
     }
 };
 
@@ -1015,23 +1364,33 @@ class spell_dk_vampiric_blood : public AuraScript
 // 43265 - Death and Decay
 struct at_dk_death_and_decay : AreaTriggerAI
 {
-    at_dk_death_and_decay(AreaTrigger* areatrigger) : AreaTriggerAI(areatrigger) { }
+    using AreaTriggerAI::AreaTriggerAI;
 
     void OnUnitEnter(Unit* unit) override
     {
-        if (Unit* caster = at->GetCaster())
-        {
-            if (caster == unit)
-            {
-                if (caster->HasAura(SPELL_DK_UNHOLY_GROUND_TALENT))
-                    caster->CastSpell(caster, SPELL_DK_UNHOLY_GROUND_HASTE);
-            }
-        }
+        if (unit->GetGUID() != at->GetCasterGuid())
+            return;
+
+        if (unit->HasAura(SPELL_DK_CLEAVING_STRIKES))
+            unit->CastSpell(unit, SPELL_DK_DEATH_AND_DECAY_INCREASE_TARGETS, TRIGGERED_DONT_REPORT_CAST_ERROR);
+
+        if (unit->HasAura(SPELL_DK_UNHOLY_GROUND_TALENT))
+            unit->CastSpell(unit, SPELL_DK_UNHOLY_GROUND_HASTE);
     }
 
     void OnUnitExit(Unit* unit) override
     {
-        unit->RemoveAurasDueToSpell(SPELL_DK_UNHOLY_GROUND_HASTE);
+        if (unit->GetGUID() != at->GetCasterGuid())
+            return;
+
+        if (!unit->HasAura(SPELL_DK_CLEAVING_STRIKES))
+            unit->RemoveAurasDueToSpell(SPELL_DK_UNHOLY_GROUND_HASTE);
+
+        if (Aura* deathAndDecay = unit->GetAura(SPELL_DK_DEATH_AND_DECAY_INCREASE_TARGETS))
+        {
+            if (AuraEffect* const cleavingStrikes = unit->GetAuraEffect(SPELL_DK_CLEAVING_STRIKES, EFFECT_3))
+                deathAndDecay->SetDuration(cleavingStrikes->GetAmount());
+        }
     }
 };
 
@@ -1044,7 +1403,6 @@ public:
 
     class spell_dk_icebound_fortitude_AuraScript : public AuraScript
     {
-        PrepareAuraScript(spell_dk_icebound_fortitude_AuraScript);
 
         void CalculateAmount(AuraEffect const* /*aurEff*/, int32& amount, bool& /*canBeRecalculated*/)
         {
@@ -1067,7 +1425,6 @@ public:
 // Outbreak - 77575
 class spell_dk_outbreak : public SpellScript
 {
-    PrepareSpellScript(spell_dk_outbreak);
 
     void HandleOnHit(SpellEffIndex /*effIndex*/)
     {
@@ -1085,7 +1442,6 @@ class spell_dk_outbreak : public SpellScript
 // Outbreak - 196782
 class aura_dk_outbreak_periodic : public AuraScript
 {
-    PrepareAuraScript(aura_dk_outbreak_periodic);
 
     void HandleDummyTick(AuraEffect const* /*aurEff*/)
     {
@@ -1109,7 +1465,6 @@ class aura_dk_outbreak_periodic : public AuraScript
 // 115994 - Unholy Blight, triggered by 115989
 class spell_dk_unholy_blight : public AuraScript
 {
-    PrepareAuraScript(spell_dk_unholy_blight);
 
     void HandlePeriodic(AuraEffect const* /*aurEff*/)
     {
@@ -1124,7 +1479,6 @@ class spell_dk_unholy_blight : public AuraScript
 // 55090 - Scourge Strike
 class spell_dk_scourge_strike : public SpellScript
 {
-    PrepareSpellScript(spell_dk_scourge_strike);
 
     void HandleOnHit(SpellEffIndex /*effIndex*/)
     {
@@ -1164,7 +1518,6 @@ class spell_dk_scourge_strike : public SpellScript
 // 152280 - Defile
 class aura_dk_defile : public AuraScript
 {
-    PrepareAuraScript(aura_dk_defile);
 
     void HandlePeriodic(AuraEffect const* /*aurEff*/)
     {
@@ -1210,7 +1563,6 @@ struct at_dk_defile : AreaTriggerAI
 //156004
 class spell_dk_defile_aura : public AuraScript
 {
-    PrepareAuraScript(spell_dk_defile_aura);
 
     void HandleApply(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
     {
@@ -1264,7 +1616,6 @@ public:
 
     class spell_dk_dark_transformation_form_SpellScript : public SpellScript
     {
-        PrepareSpellScript(spell_dk_dark_transformation_form_SpellScript);
 
         void HandleOnHit()
         {
@@ -1296,7 +1647,6 @@ public:
 // 207317 - Epidemic
 class spell_dk_epidemic : public SpellScript
 {
-    PrepareSpellScript(spell_dk_epidemic);
 
     void HandleHit(SpellEffIndex /*effIndex*/)
     {
@@ -1322,7 +1672,6 @@ class spell_dk_epidemic : public SpellScript
 // 215969 - Epidemic AOE
 class spell_dk_epidemic_aoe : public SpellScript
 {
-    PrepareSpellScript(spell_dk_epidemic_aoe);
 
     void HandleOnHitMain(SpellEffIndex /*effIndex*/)
     {
@@ -1375,13 +1724,17 @@ void AddSC_deathknight_spell_scripts()
 {
     RegisterSpellScript(spell_dk_advantage_t10_4p);
     RegisterSpellScript(spell_dk_anti_magic_shell);
+    RegisterSpellScriptWithArgs(spell_dk_apply_bone_shield, "spell_dk_marrowrend_apply_bone_shield", EFFECT_2);
+    RegisterSpellScriptWithArgs(spell_dk_apply_bone_shield, "spell_dk_deaths_caress_apply_bone_shield", EFFECT_2);
     RegisterSpellScript(spell_dk_army_transform);
     RegisterSpellScript(spell_dk_blinding_sleet);
     RegisterSpellScript(spell_dk_blood_boil);
+    RegisterSpellScript(spell_dk_brittle);
     RegisterSpellScript(spell_dk_dancing_rune_weapon);
     RegisterSpellScript(spell_dk_dark_simulacrum);
     RegisterSpellScript(spell_dk_dark_simulacrum_buff);
     RegisterSpellScript(spell_dk_death_and_decay);
+    RegisterSpellScript(spell_dk_death_and_decay_increase_targets);
     RegisterSpellScript(spell_dk_death_coil);
     RegisterSpellScript(spell_dk_death_gate);
     RegisterSpellScript(spell_dk_death_grip_initial);
@@ -1389,9 +1742,14 @@ void AddSC_deathknight_spell_scripts()
     RegisterSpellScript(spell_dk_death_strike);
     RegisterSpellScript(spell_dk_death_strike_enabler);
     RegisterSpellScript(spell_dk_festering_strike);
+    RegisterSpellScript(spell_dk_frost_fever_proc);
     RegisterSpellScript(spell_dk_ghoul_explode);
     RegisterSpellScript(spell_dk_glyph_of_scourge_strike_script);
+    RegisterSpellScript(spell_dk_heartbreaker);
     RegisterSpellScript(spell_dk_howling_blast);
+    RegisterSpellScript(spell_dk_ice_prison);
+    RegisterSpellScript(spell_dk_icy_talons);
+    RegisterSpellScript(spell_dk_icy_talons_buff);
     RegisterSpellScript(spell_dk_mark_of_blood);
     RegisterSpellScript(spell_dk_necrosis);
     RegisterSpellScript(spell_dk_obliteration);
@@ -1400,7 +1758,11 @@ void AddSC_deathknight_spell_scripts()
     RegisterSpellScript(spell_dk_pet_skeleton_transform);
     RegisterSpellScript(spell_dk_pvp_4p_bonus);
     RegisterSpellScript(spell_dk_raise_dead);
+    RegisterSpellScript(spell_dk_reaper_of_souls);
     RegisterSpellScript(spell_dk_rime);
+    RegisterSpellScriptWithArgs(spell_dk_soul_reaper, "spell_dk_soul_reaper", EFFECT_1, EFFECT_2);
+    RegisterSpellScriptWithArgs(spell_dk_soul_reaper, "spell_dk_soul_reaper_reaper_of_souls", EFFECT_0, Optional<SpellEffIndex>());
+    RegisterSpellScript(spell_dk_subduing_grasp);
     RegisterSpellScript(spell_dk_t20_2p_rune_empowered);
     RegisterSpellScript(spell_dk_vampiric_blood);
     RegisterSpellScript(spell_dk_marrowrend);

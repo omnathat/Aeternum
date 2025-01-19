@@ -23,7 +23,8 @@ WorldPacket const* WorldPackets::Pet::PetSpells::Write()
     _worldPacket << uint16(_CreatureFamily);
     _worldPacket << uint16(Specialization);
     _worldPacket << uint32(TimeLimit);
-    _worldPacket << uint16(CommandState | (Flag << 16));
+    _worldPacket << uint8(CommandState);
+    _worldPacket << uint8(Flag);
     _worldPacket << uint8(ReactState);
     _worldPacket.append(ActionButtons.data(), ActionButtons.size());
     _worldPacket << uint32(Actions.size());
@@ -204,11 +205,9 @@ WorldPacket const* WorldPackets::Pet::PetTameFailure::Write()
 WorldPacket const* WorldPackets::Pet::PetMode::Write()
 {
     _worldPacket << PetGUID;
-
-    //! custom code - jam data looks like: x >> 0 + x2 >> 8 + x2 >> 16
-    _worldPacket << static_cast<uint8>(_reactState);
-    _worldPacket << static_cast<uint8>(_commandState);
-    _worldPacket << static_cast<uint16>(_flag);
+    _worldPacket << uint8(CommandState);
+    _worldPacket << uint16(Flag);
+    _worldPacket << uint8(ReactState);
 
     return &_worldPacket;
 }
@@ -226,6 +225,6 @@ WorldPacket const* WorldPackets::Pet::PetDismissSound::Write()
 {
     _worldPacket << ModelID;
     _worldPacket << ModelPosition;
-
+	
     return &_worldPacket;
 }

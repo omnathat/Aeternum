@@ -68,7 +68,9 @@ void WorldSession::HandleBankerActivateOpcode(WorldPackets::Bank::BankerActivate
         if (Creature* creature = _player->GetMap()->GetCreature(bankerActivate.Banker))
             creature->SendMirrorSound(_player, 0);
 #endif
-    if (bankerActivate.InteractionType != PlayerInteractionType::Banker)
+	
+    if (bankerActivate.InteractionType != PlayerInteractionType::Banker && bankerActivate.InteractionType != PlayerInteractionType::CharacterBanker)
+
         return;
 
     Creature* unit = GetPlayer()->GetNPCIfCanInteractWith(bankerActivate.Banker, UNIT_NPC_FLAG_ACCOUNT_BANKER | UNIT_NPC_FLAG_BANKER, UNIT_NPC_FLAG_2_NONE);
