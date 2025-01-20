@@ -47,12 +47,10 @@ namespace WorldPackets
 
         struct GameRuleValuePair
         {
-            int32 Rule = 13;
-            int32 Value = 1;
+            int32 Rule = 0;
+            int32 Value = 0;
             float ValueF = 0.0f;
-
-        };      
-
+        };
 
         class FeatureSystemStatus final : public ServerPacket
         {
@@ -131,9 +129,9 @@ namespace WorldPackets
             int32 CfgRealmRecID                          = 0;
             uint32 CommercePricePollTimeSeconds          = 0;
             int64 RedeemForBalanceAmount                 = 0;
-            uint32 BpayStorePurchaseTimeout              = 3000;
-            uint32 ClubsPresenceDelay                    = 3000;
-            uint32 ClubPresenceUnsubscribeDelay          = 3000; ///< Timer for updating club presence when communities ui frame is hidden
+            uint32 BpayStorePurchaseTimeout              = 30000;
+            uint32 ClubsPresenceDelay                    = 30000;
+            uint32 ClubPresenceUnsubscribeDelay          = 30000; ///< Timer for updating club presence when communities ui frame is hidden
             uint32 KioskSessionDurationMinutes           = 0;
             int32 ContentSetID                           = 0; ///< Currently active Classic season
             int16 MaxPlayerGuidLookupsPerRequest         = 50;
@@ -209,14 +207,14 @@ namespace WorldPackets
             bool BpayStoreAvailable                  = true; // NYI
             bool BpayStoreDisabledByParentalControls = false; // NYI
             bool CharUndeleteEnabled                 = false;
-            bool BpayStoreEnabled                    = true; // NYI
+            bool BpayStoreEnabled                    = false; // NYI
             bool CommerceServerEnabled               = false; // NYI
             bool VeteranTokenRedeemWillKick          = false; // NYI
             bool WorldTokenRedeemWillKick            = false; // NYI
             bool ExpansionPreorderInStore            = false; // NYI
             bool KioskModeEnabled                    = false; // NYI
             bool CompetitiveModeEnabled              = false; // NYI
-            bool BoostEnabled                        = true; // classic only
+            bool BoostEnabled                        = false; // classic only
             bool TrialBoostEnabled                   = false; // NYI
             bool RedeemForBalanceAvailable           = false; // NYI
             bool PaidCharacterTransfersBetweenBnetAccountsEnabled = false;
@@ -241,7 +239,7 @@ namespace WorldPackets
             int64 RedeemForBalanceAmount             = 0;     // NYI
             int32 MaxCharactersOnThisRealm           = 0;
             uint32 BpayStorePurchaseTimeout          = 0;     // NYI
-            int32 ActiveBoostType                    = 2;     // NYI
+            int32 ActiveBoostType                    = 0;     // NYI
             int32 TrialBoostType                     = 0;     // NYI
             int32 MinimumExpansionLevel              = 0;
             int32 MaximumExpansionLevel              = 0;
@@ -256,7 +254,7 @@ namespace WorldPackets
             Optional<int32> LaunchDurationETA;
             std::vector<DebugTimeEventInfo> DebugTimeEvents;
             int32 MostRecentTimeEventID              = 0;
-            uint32 EventRealmQueues                  = 2097152;
+            uint32 EventRealmQueues                  = 0;
             std::string RealmHiddenAlert;
         };
 
