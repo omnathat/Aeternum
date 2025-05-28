@@ -66,11 +66,13 @@ enum InventorySlot
 };
 
 struct AbstractFollower;
+struct AuraCreateInfo;
 struct CharmInfo;
 struct FactionTemplateEntry;
 struct LiquidData;
 struct LiquidTypeEntry;
 struct MountCapabilityEntry;
+struct SpellClickInfo;
 struct SpellValue;
 struct TeleportLocation;
 struct FlightCapabilityEntry;
@@ -1467,6 +1469,18 @@ class TC_GAME_API Unit : public WorldObject
             std::array<uint32, 5> VisitedSpells = { };
             bool AddSpell(uint32 spellId);
         };
+        struct GetCastSpellInfoResult
+        {
+            ::SpellInfo const* SpellInfo = nullptr;
+            TriggerCastFlags TriggerFlag = TRIGGERED_NONE;
+        };
+        GetCastSpellInfoResult GetCastSpellInfo(SpellInfo const* spellInfo) const
+        {
+            GetCastSpellInfoContext context;
+            GetCastSpellInfoResult result;
+            result.SpellInfo = GetCastSpellInfo(spellInfo, result.TriggerFlag, &context);
+            return result;
+        }
         virtual SpellInfo const* GetCastSpellInfo(SpellInfo const* spellInfo, TriggerCastFlags& triggerFlag, GetCastSpellInfoContext* context) const;
         uint32 GetCastSpellXSpellVisualId(SpellInfo const* spellInfo) const override;
 
@@ -1643,9 +1657,16 @@ class TC_GAME_API Unit : public WorldObject
         void _UnregisterAreaTrigger(AreaTrigger* areaTrigger);
         AreaTrigger* GetAreaTrigger(uint32 spellId) const;
         std::vector<AreaTrigger*> GetAreaTriggers(uint32 spellId) const;
+
+        enum class AreaTriggerRemoveReason : uint8
+        {
+            Default,
+            UnitDespawn
+        };
+
         void RemoveAreaTrigger(uint32 spellId);
         void RemoveAreaTrigger(AuraEffect const* aurEff);
-        void RemoveAllAreaTriggers();
+        void RemoveAllAreaTriggers(AreaTriggerRemoveReason reason = AreaTriggerRemoveReason::Default);
 
         void ModifyAuraState(AuraStateType flag, bool apply);
         uint32 BuildAuraStateUpdateForTarget(Unit const* target) const;
@@ -1737,6 +1758,7 @@ class TC_GAME_API Unit : public WorldObject
         void SetExtraUnitMovementFlags2(uint32 f) { m_movementInfo.SetExtraMovementFlags2(f); }
 
         bool IsSplineEnabled() const;
+        bool IsSplineFinished() const;
 
         void SetControlled(bool apply, UnitState state);
         void ApplyControlStatesIfNeeded();
@@ -1744,6 +1766,7 @@ class TC_GAME_API Unit : public WorldObject
         ///----------Pet responses methods-----------------
         void SendPetActionFeedback(PetActionFeedback msg, uint32 spellId);
         void SendPetTalk(uint32 pettalk);
+        void SendPetDismissSound();
         void SendPetAIReaction(ObjectGuid guid);
         ///----------End of Pet responses methods----------
 
@@ -1781,6 +1804,7 @@ class TC_GAME_API Unit : public WorldObject
         TransportBase* GetDirectTransport() const;
 
         void HandleSpellClick(Unit* clicker, int8 seatId = -1);
+        bool HandleSpellClick(Unit* clicker, int8 seatId, uint32 spellId, TriggerCastFlags flags = TRIGGERED_NONE, SpellClickInfo const* spellClickInfo = nullptr);
         void EnterVehicle(Unit* base, int8 seatId = -1);
         virtual void ExitVehicle(Position const* exitPosition = nullptr);
         void ChangeSeat(int8 seatId, bool next = true);

@@ -29,6 +29,7 @@
 #include "NPCHandler.h"
 #include "ObjectDefines.h"
 #include "ObjectGuid.h"
+#include "ObjectGuidSequenceGenerator.h"
 #include "Position.h"
 #include "QuestDef.h"
 #include "RaceMask.h"
@@ -759,7 +760,7 @@ struct GossipMenuItems
     uint32              ActionPoiID;
     Optional<int32>     GossipNpcOptionID;
     bool                BoxCoded;
-    uint32              BoxMoney;
+    uint64              BoxMoney;
     std::string         BoxText;
     uint32              BoxBroadcastTextID;
     Optional<int32>     SpellID;
@@ -922,7 +923,6 @@ struct PlayerChoiceResponseMawPower
 {
     int32 TypeArtFileID = 0;
     Optional<int32> Rarity;
-    Optional<uint32> RarityColor;
     int32 SpellID = 0;
     int32 MaxStacks = 0;
 };
@@ -1826,7 +1826,7 @@ class TC_GAME_API ObjectMgr
         // first free low guid for selected guid type
         ObjectGuidGenerator& GetGuidSequenceGenerator(HighGuid high);
 
-        std::map<HighGuid, std::unique_ptr<ObjectGuidGenerator>> _guidGenerators;
+        std::map<HighGuid, ObjectGuidGenerator> _guidGenerators;
         QuestContainer _questTemplates;
         std::vector<Quest const*> _questTemplatesAutoPush;
         QuestObjectivesByIdContainer _questObjectives;

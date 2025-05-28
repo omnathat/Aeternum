@@ -23,10 +23,10 @@ void WorldSession::HandleCollectionItemSetFavorite(WorldPackets::Collections::Co
 {
     switch (collectionItemSetFavorite.Type)
     {
-        case WorldPackets::Collections::TOYBOX:
+        case ItemCollectionType::Toy:
             GetCollectionMgr()->ToySetFavorite(collectionItemSetFavorite.ID, collectionItemSetFavorite.IsFavorite);
             break;
-        case WorldPackets::Collections::APPEARANCE:
+        case ItemCollectionType::Transmog:
         {
             auto [hasAppearance, isTemporary] = GetCollectionMgr()->HasItemAppearance(collectionItemSetFavorite.ID);
             if (!hasAppearance || isTemporary)
@@ -35,9 +35,18 @@ void WorldSession::HandleCollectionItemSetFavorite(WorldPackets::Collections::Co
             GetCollectionMgr()->SetAppearanceIsFavorite(collectionItemSetFavorite.ID, collectionItemSetFavorite.IsFavorite);
             break;
         }
-        case WorldPackets::Collections::TRANSMOG_SET:
+        case ItemCollectionType::TransmogSetFavorite:
+            break;
+        case ItemCollectionType::WarbandScene:
+            GetCollectionMgr()->SetWarbandSceneIsFavorite(collectionItemSetFavorite.ID, collectionItemSetFavorite.IsFavorite);
             break;
         default:
             break;
     }
+}
+
+void WorldSession::HandleMountClearFanfare(WorldPackets::Collections::MountClearFanfare& packet)
+{
+    if (GetCollectionMgr()->HasMount(packet.spellID))
+        GetCollectionMgr()->UpdateAccountMounts(packet.spellID, MOUNT_STATUS_NONE);
 }

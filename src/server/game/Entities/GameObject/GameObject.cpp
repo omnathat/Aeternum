@@ -486,7 +486,7 @@ public:
 
     int32 GetMapIdForSpawning() const override
     {
-        return _owner.GetGOInfo()->transport.SpawnMap;
+        return _owner.GetGOInfo()->GetSpawnMap();
     }
 
     void SetAutoCycleBetweenStopFrames(bool on)
@@ -2330,9 +2330,7 @@ bool GameObject::ActivateToQuest(Player const* target) const
     {
         case GAMEOBJECT_TYPE_QUESTGIVER:
         {
-            GameObject* go = const_cast<GameObject*>(this);
-            QuestGiverStatus questStatus = const_cast<Player*>(target)->GetQuestDialogStatus(go);
-            if (questStatus != QuestGiverStatus::None && questStatus != QuestGiverStatus::Future)
+            if ((target->GetQuestDialogStatus(this) & ~QuestGiverStatusFutureMask) != QuestGiverStatus::None)
                 return true;
             break;
         }
@@ -3286,8 +3284,14 @@ void GameObject::Use(Unit* user, bool ignoreCastInProgress /*= false*/)
 
             Player* player = user->ToPlayer();
 
+            if (player->HasAuraType(SPELL_AURA_MOD_SHAPESHIFT))
+            {
+                player->SendDirectMessage(WorldPackets::Misc::DisplayGameError(GameError::ERR_NOT_WHILE_SHAPESHIFTED).Write());
+                return;
+            }
+
             WorldPackets::Misc::EnableBarberShop enableBarberShop;
-            enableBarberShop.CustomizationScope = info->barberChair.CustomizationScope;
+            enableBarberShop.CustomizationFeatureMask = info->barberChair.CustomizationFeatureMask;
             player->SendDirectMessage(enableBarberShop.Write());
 
             // fallback, will always work
@@ -3648,7 +3652,7 @@ SpawnTrackingStateData const* GameObject::GetSpawnTrackingStateDataForPlayer(Pla
     if (!player)
         return nullptr;
 
-    if (SpawnMetadata const* data = sObjectMgr->GetSpawnMetadata(SPAWN_TYPE_GAMEOBJECT, GetSpawnId()))
+    if (GameObjectData const* data = GetGameObjectData())
     {
         if (data->spawnTrackingQuestObjectiveId && data->spawnTrackingData)
         {

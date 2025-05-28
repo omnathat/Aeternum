@@ -53,16 +53,25 @@ enum EvokerSpells
     SPELL_EVOKER_BLESSING_OF_THE_BRONZE_SHAMAN  = 381756,
     SPELL_EVOKER_BLESSING_OF_THE_BRONZE_WARLOCK = 381757,
     SPELL_EVOKER_BLESSING_OF_THE_BRONZE_WARRIOR = 381758,
+    SPELL_EVOKER_BURNOUT                        = 375802,
+    SPELL_EVOKER_CALL_OF_YSERA_TALENT           = 373834,
+    SPELL_EVOKER_CALL_OF_YSERA                  = 373835,
+    SPELL_EVOKER_CAUSALITY                      = 375777,
+    SPELL_EVOKER_DISINTEGRATE                   = 356995,
     SPELL_EVOKER_EMERALD_BLOSSOM_HEAL           = 355916,
     SPELL_EVOKER_ENERGIZING_FLAME               = 400006,
     SPELL_EVOKER_ESSENCE_BURST                  = 359618,
     SPELL_EVOKER_FIRESTORM_DAMAGE               = 369374,
+    SPELL_EVOKER_ETERNITY_SURGE                 = 359073,
+    SPELL_EVOKER_FIRE_BREATH                    = 357208,
     SPELL_EVOKER_FIRE_BREATH_DAMAGE             = 357209,
     SPELL_EVOKER_GLIDE_KNOCKBACK                = 358736,
     SPELL_EVOKER_HOVER                          = 358267,
     SPELL_EVOKER_LIVING_FLAME                   = 361469,
     SPELL_EVOKER_LIVING_FLAME_DAMAGE            = 361500,
     SPELL_EVOKER_LIVING_FLAME_HEAL              = 361509,
+    SPELL_EVOKER_PANACEA_HEAL                   = 387763,
+    SPELL_EVOKER_PANACEA_TALENT                 = 387761,
     SPELL_EVOKER_PERMEATING_CHILL_TALENT        = 370897,
     SPELL_EVOKER_PYRE_DAMAGE                    = 357212,
     SPELL_EVOKER_RUBY_EMBERS                    = 365937,
@@ -153,6 +162,118 @@ class spell_evo_blessing_of_the_bronze : public SpellScript
     void Register() override
     {
         OnObjectAreaTargetSelect += SpellObjectAreaTargetSelectFn(spell_evo_blessing_of_the_bronze::RemoveInvalidTargets, EFFECT_ALL, TARGET_UNIT_CASTER_AREA_RAID);
+    }
+};
+
+// 375801 - Burnout
+class spell_evo_burnout : public AuraScript
+{
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SPELL_EVOKER_BURNOUT });
+    }
+
+    static bool CheckProc(AuraEffect const* aurEff, ProcEventInfo const& /*eventInfo*/)
+    {
+        return roll_chance_i(aurEff->GetAmount());
+    }
+
+    static void HandleProc(AuraEffect const* /*aurEff*/, ProcEventInfo const& eventInfo)
+    {
+        eventInfo.GetActor()->CastSpell(eventInfo.GetActor(), SPELL_EVOKER_BURNOUT, TRIGGERED_IGNORE_CAST_IN_PROGRESS | TRIGGERED_DONT_REPORT_CAST_ERROR);
+    }
+
+    void Register() override
+    {
+        DoCheckEffectProc += AuraCheckEffectProcFn(spell_evo_burnout::CheckProc, EFFECT_0, SPELL_AURA_DUMMY);
+        OnEffectProc += AuraEffectProcFn(spell_evo_burnout::HandleProc, EFFECT_0, SPELL_AURA_DUMMY);
+    }
+};
+
+// 373834 - Call of Ysera (attached to 361195 - Verdant Embrace (Green))
+class spell_evo_call_of_ysera : public SpellScript
+{
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SPELL_EVOKER_CALL_OF_YSERA_TALENT, SPELL_EVOKER_CALL_OF_YSERA });
+    }
+
+    bool Load() override
+    {
+        return GetCaster()->HasAura(SPELL_EVOKER_CALL_OF_YSERA_TALENT);
+    }
+
+    void HandleCallOfYsera() const
+    {
+        GetCaster()->CastSpell(GetCaster(), SPELL_EVOKER_CALL_OF_YSERA, CastSpellExtraArgsInit{
+            .TriggerFlags = TRIGGERED_IGNORE_CAST_IN_PROGRESS | TRIGGERED_DONT_REPORT_CAST_ERROR,
+            .TriggeringSpell = GetSpell()
+        });
+    }
+
+    void Register() override
+    {
+        AfterCast += SpellCastFn(spell_evo_call_of_ysera::HandleCallOfYsera);
+    }
+};
+
+static constexpr std::array<uint32, 2> CausalityAffectedEmpowerSpells = { SPELL_EVOKER_ETERNITY_SURGE, SPELL_EVOKER_FIRE_BREATH };
+
+// Called by 356995 - Disintegrate (Blue)
+class spell_evo_causality_disintegrate : public AuraScript
+{
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellEffect({ { SPELL_EVOKER_CAUSALITY, EFFECT_1 } });
+    }
+
+    bool Load() override
+    {
+        return GetCaster()->HasAura(SPELL_EVOKER_CAUSALITY);
+    }
+
+    void OnTick(AuraEffect const* /*aurEff*/) const
+    {
+        if (AuraEffect const* causality = GetCaster()->GetAuraEffect(SPELL_EVOKER_CAUSALITY, EFFECT_0))
+            for (uint32 spell : CausalityAffectedEmpowerSpells)
+                GetCaster()->GetSpellHistory()->ModifyCooldown(spell, Milliseconds(causality->GetAmount()));
+    }
+
+    void Register() override
+    {
+        OnEffectPeriodic += AuraEffectPeriodicFn(spell_evo_causality_disintegrate::OnTick, EFFECT_0, SPELL_AURA_PERIODIC_DAMAGE);
+    }
+};
+
+// Called by 357212 - Pyre (Red)
+class spell_evo_causality_pyre : public SpellScript
+{
+    static constexpr int64 TargetLimit = 5;
+
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellEffect({ { SPELL_EVOKER_CAUSALITY, EFFECT_1 } });
+    }
+
+    bool Load() override
+    {
+        return GetCaster()->HasAura(SPELL_EVOKER_CAUSALITY);
+    }
+
+    void HandleCooldown() const
+    {
+        AuraEffect const* causality = GetCaster()->GetAuraEffect(SPELL_EVOKER_CAUSALITY, EFFECT_1);
+        if (!causality)
+            return;
+
+        Milliseconds cooldownReduction = Milliseconds(std::min(GetUnitTargetCountForEffect(EFFECT_0), TargetLimit) * causality->GetAmount());
+        for (uint32 spell : CausalityAffectedEmpowerSpells)
+            GetCaster()->GetSpellHistory()->ModifyCooldown(spell, cooldownReduction);
+    }
+
+    void Register() override
+    {
+        AfterCast += SpellCastFn(spell_evo_causality_pyre::HandleCooldown);
     }
 };
 
@@ -327,7 +448,7 @@ struct at_evo_firestorm : AreaTriggerAI
 
         _scheduler.Schedule(0ms, [this](TaskContext task)
         {
-            std::chrono::duration<float> period = 2s; // 2s, affected by haste
+            FloatMilliseconds period = 2s; // 2s, affected by haste
             if (Unit* caster = at->GetCaster())
             {
                 period *= *caster->m_unitData->ModCastingSpeed;
@@ -424,6 +545,33 @@ class spell_evo_living_flame : public SpellScript
     {
         OnEffectHitTarget += SpellEffectFn(spell_evo_living_flame::HandleHitTarget, EFFECT_0, SPELL_EFFECT_DUMMY);
         OnEffectLaunchTarget += SpellEffectFn(spell_evo_living_flame::HandleLaunchTarget, EFFECT_0, SPELL_EFFECT_DUMMY);
+    }
+};
+
+// 387761 Panacea (Green) (attached to 355913 - Emerald Blossom (Green) and 360995 - Verdant Embrace (Green))
+class spell_evo_panacea : public SpellScript
+{
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SPELL_EVOKER_PANACEA_TALENT, SPELL_EVOKER_PANACEA_HEAL });
+    }
+
+    bool Load() override
+    {
+        return GetCaster()->HasAura(SPELL_EVOKER_PANACEA_TALENT);
+    }
+
+    void HandlePanacea() const
+    {
+        GetCaster()->CastSpell(GetCaster(), SPELL_EVOKER_PANACEA_HEAL, CastSpellExtraArgsInit{
+            .TriggerFlags = TRIGGERED_IGNORE_CAST_IN_PROGRESS | TRIGGERED_DONT_REPORT_CAST_ERROR,
+            .TriggeringSpell = GetSpell()
+        });
+    }
+
+    void Register() override
+    {
+        AfterCast += SpellCastFn(spell_evo_panacea::HandlePanacea);
     }
 };
 
@@ -705,6 +853,10 @@ void AddSC_evoker_spell_scripts()
 {
     RegisterSpellScript(spell_evo_azure_strike);
     RegisterSpellScript(spell_evo_blessing_of_the_bronze);
+    RegisterSpellScript(spell_evo_burnout);
+    RegisterSpellScript(spell_evo_call_of_ysera);
+    RegisterSpellScript(spell_evo_causality_disintegrate);
+    RegisterSpellScript(spell_evo_causality_pyre);
     RegisterSpellScript(spell_evo_charged_blast);
     RegisterAreaTriggerAI(at_evo_emerald_blossom);
     RegisterSpellScript(spell_evo_emerald_blossom_heal);
@@ -715,6 +867,7 @@ void AddSC_evoker_spell_scripts()
     RegisterSpellScript(spell_evo_fire_breath_damage);
     RegisterSpellScript(spell_evo_glide);
     RegisterSpellScript(spell_evo_living_flame);
+    RegisterSpellScript(spell_evo_panacea);
     RegisterSpellScript(spell_evo_permeating_chill);
     RegisterSpellScript(spell_evo_pyre);
     RegisterSpellScript(spell_evo_ruby_embers);

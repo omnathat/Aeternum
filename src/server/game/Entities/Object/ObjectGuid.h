@@ -15,8 +15,8 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef ObjectGuid_h__
-#define ObjectGuid_h__
+#ifndef TRINITYCORE_OBJECT_GUID_H
+#define TRINITYCORE_OBJECT_GUID_H
 
 #include "Define.h"
 #include "EnumFlag.h"
@@ -243,8 +243,8 @@ class ObjectGuid;
 class TC_GAME_API ObjectGuidFactory
 {
 public:
-    static ObjectGuid CreateNull();
-    static ObjectGuid CreateUniq(uint64 id);
+    static constexpr ObjectGuid CreateNull();
+    static constexpr ObjectGuid CreateUniq(uint64 id);
     static ObjectGuid CreatePlayer(uint32 realmId, uint64 dbId);
     static ObjectGuid CreateItem(uint32 realmId, uint64 dbId);
     static ObjectGuid CreateWorldObject(HighGuid type, uint8 subType, uint32 realmId, uint16 mapId, uint32 serverId, uint32 entry, uint64 counter);
@@ -280,7 +280,7 @@ class TC_GAME_API ObjectGuid
 
         using LowType = uint64;
 
-        ObjectGuid() = default;
+        constexpr ObjectGuid() = default;
 
         uint64 GetRawValue(std::size_t i) const { return _data[i]; }
         std::array<uint8, 16> GetRawValue() const;
@@ -383,8 +383,8 @@ class TC_GAME_API ObjectGuid
         static ObjectGuid FromString(std::string_view guidString);
         std::size_t GetHash() const;
 
-        template <HighGuid type, std::enable_if_t<ObjectGuidTraits<type>::Format::value == ObjectGuidFormatType::Null, int32> = 0> static ObjectGuid Create() { return ObjectGuidFactory::CreateNull(); }
-        template <HighGuid type, std::enable_if_t<ObjectGuidTraits<type>::Format::value == ObjectGuidFormatType::Uniq, int32> = 0> static ObjectGuid Create(LowType id) { return ObjectGuidFactory::CreateUniq(id); }
+        template <HighGuid type, std::enable_if_t<ObjectGuidTraits<type>::Format::value == ObjectGuidFormatType::Null, int32> = 0> static constexpr ObjectGuid Create() { return ObjectGuidFactory::CreateNull(); }
+        template <HighGuid type, std::enable_if_t<ObjectGuidTraits<type>::Format::value == ObjectGuidFormatType::Uniq, int32> = 0> static constexpr ObjectGuid Create(LowType id) { return ObjectGuidFactory::CreateUniq(id); }
         template <HighGuid type, std::enable_if_t<ObjectGuidTraits<type>::Format::value == ObjectGuidFormatType::Player, int32> = 0> static ObjectGuid Create(LowType dbId) { return ObjectGuidFactory::CreatePlayer(0, dbId); }
         template <HighGuid type, std::enable_if_t<ObjectGuidTraits<type>::Format::value == ObjectGuidFormatType::Item, int32> = 0> static ObjectGuid Create(LowType dbId) { return ObjectGuidFactory::CreateItem(0, dbId); }
         template <HighGuid type, std::enable_if_t<ObjectGuidTraits<type>::Format::value == ObjectGuidFormatType::WorldObject, int32> = 0> static ObjectGuid Create(uint16 mapId, uint32 entry, LowType counter) { return ObjectGuidFactory::CreateWorldObject(type, 0, 0, mapId, 0, entry, counter); }
@@ -405,7 +405,7 @@ class TC_GAME_API ObjectGuid
         template <HighGuid type, std::enable_if_t<ObjectGuidTraits<type>::Format::value == ObjectGuidFormatType::LMMLobby, int32> = 0> static ObjectGuid Create(uint32 arg2, uint8 arg3, uint8 arg4, LowType counter) { return ObjectGuidFactory::CreateLMMLobby(0, arg2, arg3, arg4, counter); }
 
     protected:
-        ObjectGuid(uint64 high, uint64 low) : _data({{ low, high }})
+        constexpr ObjectGuid(uint64 high, uint64 low) : _data({{ low, high }})
         {
         }
 
@@ -417,23 +417,6 @@ using GuidSet = std::set<ObjectGuid>;
 using GuidList = std::list<ObjectGuid>;
 using GuidVector = std::vector<ObjectGuid>;
 using GuidUnorderedSet = std::unordered_set<ObjectGuid>;
-
-class TC_GAME_API ObjectGuidGenerator
-{
-public:
-    explicit ObjectGuidGenerator(HighGuid high, ObjectGuid::LowType start = UI64LIT(1)) : _high(high), _nextGuid(start) { }
-    ~ObjectGuidGenerator() = default;
-
-    void Set(ObjectGuid::LowType val) { _nextGuid = val; }
-    ObjectGuid::LowType Generate();
-    ObjectGuid::LowType GetNextAfterMaxUsed() const { return _nextGuid; }
-
-protected:
-    void HandleCounterOverflow();
-    void CheckGuidTrigger();
-    HighGuid _high;
-    ObjectGuid::LowType _nextGuid;
-};
 
 TC_GAME_API ByteBuffer& operator<<(ByteBuffer& buf, ObjectGuid const& guid);
 TC_GAME_API ByteBuffer& operator>>(ByteBuffer& buf, ObjectGuid&       guid);
@@ -539,4 +522,4 @@ namespace Trinity
     }
 }
 
-#endif // ObjectGuid_h__
+#endif // TRINITYCORE_OBJECT_GUID_H

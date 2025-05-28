@@ -21,6 +21,7 @@
 #include "CreatureOutfit.h"
 #include "DatabaseEnv.h"
 #include "DB2Stores.h"
+#include "GameObject.h"
 #include "GameObjectAI.h"
 #include "GameObjectPackets.h"
 #include "Guild.h"
@@ -245,27 +246,11 @@ void WorldSession::HandleCastSpellOpcode(WorldPackets::Spells::CastSpell& cast)
         return;
     }
 
-    // ignore for remote control state (for player case)
-    Unit* mover = _player->GetUnitBeingMoved();
-    if (mover != _player && mover->GetTypeId() == TYPEID_PLAYER)
-        return;
-
-    Unit* castingUnit = mover;
-    if (castingUnit->IsCreature() && !castingUnit->ToCreature()->HasSpell(spellInfo->Id))
-    {
-        // If the vehicle creature does not have the spell but it allows the passenger to cast own spells
-        // change caster to player and let him cast
-        if (!_player->IsOnVehicle(castingUnit) || spellInfo->CheckVehicle(_player) != SPELL_CAST_OK)
-            return;
-
-        castingUnit = _player;
-    }
-
     if (cast.Cast.MoveUpdate.has_value())
         HandleMovementOpcode(CMSG_MOVE_STOP, *cast.Cast.MoveUpdate);
 
-    if (_player->CanRequestSpellCast(spellInfo, castingUnit))
-        _player->RequestSpellCast(std::make_unique<SpellCastRequest>(std::move(cast.Cast), castingUnit->GetGUID()));
+    if (_player->CanRequestSpellCast(spellInfo, _player))
+        _player->RequestSpellCast(std::make_unique<SpellCastRequest>(std::move(cast.Cast), _player->GetGUID()));
     else
         Spell::SendCastResult(_player, spellInfo, {}, cast.Cast.CastID, SPELL_FAILED_SPELL_IN_PROGRESS);
 }
@@ -503,7 +488,9 @@ void WorldSession::HandleMirrorImageDataRequest(WorldPackets::Spells::GetMirrorI
             CreatureOutfit const& outfit = *outfit_ptr;
             WorldPackets::Spells::MirrorImageComponentedData mirrorImageComponentedData;
             mirrorImageComponentedData.UnitGUID = guid;
-            mirrorImageComponentedData.DisplayID = outfit.GetDisplayId();
+            if (ChrModelEntry const* chrsModel = sDB2Manager.GetChrModel(outfit.GetRace(), outfit.GetGender()))
+                mirrorImageComponentedData.ChrModelID = chrsModel->ID;
+            //mirrorImageComponentedData.ChrModelID = outfit.GetDisplayId(); // Possible crash
             mirrorImageComponentedData.RaceID = outfit.GetRace();
             mirrorImageComponentedData.Gender = outfit.GetGender();
             mirrorImageComponentedData.ClassID = outfit.GetClass();
@@ -538,7 +525,8 @@ void WorldSession::HandleMirrorImageDataRequest(WorldPackets::Spells::GetMirrorI
     {
         WorldPackets::Spells::MirrorImageComponentedData mirrorImageComponentedData;
         mirrorImageComponentedData.UnitGUID = guid;
-        mirrorImageComponentedData.DisplayID = creator->GetDisplayId();
+        if (ChrModelEntry const* chrModel = sDB2Manager.GetChrModel(creator->GetRace(), creator->GetGender()))
+            mirrorImageComponentedData.ChrModelID = chrModel->ID;
         mirrorImageComponentedData.RaceID = creator->GetRace();
         mirrorImageComponentedData.Gender = creator->GetGender();
         mirrorImageComponentedData.ClassID = creator->GetClass();
@@ -551,7 +539,7 @@ void WorldSession::HandleMirrorImageDataRequest(WorldPackets::Spells::GetMirrorI
 
         mirrorImageComponentedData.ItemDisplayID.reserve(11);
 
-        static EquipmentSlots const itemSlots[] =
+        static constexpr EquipmentSlots itemSlots[] =
         {
             EQUIPMENT_SLOT_HEAD,
             EQUIPMENT_SLOT_SHOULDERS,
@@ -598,9 +586,7 @@ void WorldSession::HandleMissileTrajectoryCollision(WorldPackets::Spells::Missil
     if (!spell || !spell->m_targets.HasDst())
         return;
 
-    Position pos = *spell->m_targets.GetDstPos();
-    pos.Relocate(packet.CollisionPos);
-    spell->m_targets.ModDst(pos);
+    spell->m_targets.ModDst(packet.CollisionPos);
 
     // we changed dest, recalculate flight time
     spell->RecalculateDelayMomentForDst();
@@ -626,6 +612,25 @@ void WorldSession::HandleUpdateMissileTrajectory(WorldPackets::Spells::UpdateMis
 
     if (packet.Status)
         HandleMovementOpcode(CMSG_MOVE_STOP, *packet.Status);
+}
+
+void WorldSession::HandleUpdateAuraVisual(WorldPackets::Spells::UpdateAuraVisual const& updateAuraVisual)
+{
+    Unit* target = ObjectAccessor::GetUnit(*_player, updateAuraVisual.TargetGUID);
+    if (!target)
+        return;
+
+    SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(updateAuraVisual.SpellID, _player->GetMap()->GetDifficultyID());
+    if (!spellInfo)
+        return;
+
+    uint32 spellXspellVisualId = _player->GetCastSpellXSpellVisualId(spellInfo);
+    for (auto const& [_, auraApp] : Trinity::Containers::MapEqualRange(target->GetAppliedAuras(), spellInfo->Id))
+        if (auraApp->GetBase()->GetCasterGUID() == _player->GetGUID())
+            auraApp->GetBase()->SetSpellVisual({ .SpellXSpellVisualID = spellXspellVisualId });
+
+    if (_player->GetChannelSpellId() == spellInfo->Id)
+        _player->SetChannelVisual({ .SpellXSpellVisualID = spellXspellVisualId });
 }
 
 void WorldSession::HandleKeyboundOverride(WorldPackets::Spells::KeyboundOverride& keyboundOverride)

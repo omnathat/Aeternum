@@ -75,7 +75,7 @@ _flags(AFLAG_NONE), _effectsToApply(effMask), _needClientUpdate(false), _effectM
     ASSERT(GetTarget() && GetBase());
 
     // Try find slot for aura
-    uint8 slot = 0;
+    uint16 slot = 0;
     // lookup for free slots in units visibleAuras
     for (AuraApplication* visibleAura : GetTarget()->GetVisibleAuras())
     {
@@ -224,7 +224,7 @@ void AuraApplication::AddEffectToApplyEffectMask(SpellEffIndex spellEffectIndex)
 
 void AuraApplication::SetNeedClientUpdate()
 {
-    if (_needClientUpdate || GetRemoveMode() != AURA_REMOVE_NONE)
+    if (_needClientUpdate || GetSlot() >= MAX_AURAS || GetRemoveMode() != AURA_REMOVE_NONE)
         return;
 
     _needClientUpdate = true;
@@ -464,12 +464,20 @@ Aura* Aura::Create(AuraCreateInfo& createInfo)
     return aura;
 }
 
+SpellCastVisual AuraCreateInfo::CalcSpellVisual() const
+{
+    return _spellVisual.value_or<SpellCastVisual>({
+        .SpellXSpellVisualID = Caster ? Caster->GetCastSpellXSpellVisualId(_spellInfo) : _spellInfo->GetSpellXSpellVisualId(),
+        .ScriptVisualID = 0
+    });
+}
+
 Aura::Aura(AuraCreateInfo const& createInfo) :
 m_spellInfo(createInfo._spellInfo), m_castDifficulty(createInfo._castDifficulty), m_castId(createInfo._castId), m_casterGuid(createInfo.CasterGUID),
 m_castItemGuid(createInfo.CastItemGUID), m_castItemId(createInfo.CastItemId),
-m_castItemLevel(createInfo.CastItemLevel), m_spellVisual({ createInfo.Caster ? createInfo.Caster->GetCastSpellXSpellVisualId(createInfo._spellInfo) : createInfo._spellInfo->GetSpellXSpellVisualId(), 0 }),
+m_castItemLevel(createInfo.CastItemLevel), m_spellVisual(createInfo.CalcSpellVisual()),
 m_applyTime(GameTime::GetGameTime()), m_owner(createInfo._owner), m_timeCla(0), m_updateTargetMapInterval(0),
-m_casterLevel(createInfo.Caster ? createInfo.Caster->GetLevel() : m_spellInfo->SpellLevel), m_procCharges(0), m_stackAmount(1),
+m_casterLevel(createInfo.Caster ? createInfo.Caster->GetLevel() : m_spellInfo->SpellLevel), m_procCharges(0), m_stackAmount(createInfo.StackAmount),
 m_isRemoved(false), m_isSingleTarget(false), m_isUsingCharges(false), m_dropEvent(nullptr),
 m_procCooldown(TimePoint::min()),
 m_lastProcAttemptTime(GameTime::Now() - Seconds(10)), m_lastProcSuccessTime(GameTime::Now() - Seconds(120)), m_scriptRef(this, NoopAuraDeleter())
@@ -512,6 +520,17 @@ void Aura::_InitEffects(uint32 effMask, Unit* caster, int32 const* baseAmount)
         _effects.pop_back();
 }
 
+bool Aura::CanPeriodicTickCrit() const
+{
+    if (GetSpellInfo()->HasAttribute(SPELL_ATTR2_CANT_CRIT))
+        return false;
+
+    if (GetSpellInfo()->HasAttribute(SPELL_ATTR8_PERIODIC_CAN_CRIT))
+        return true;
+
+    return false;
+}
+
 Aura::~Aura()
 {
     // unload scripts
@@ -526,6 +545,12 @@ Aura::~Aura()
 
     ASSERT(m_applications.empty());
     _DeleteRemovedApplications();
+}
+
+void Aura::SetSpellVisual(SpellCastVisual const& spellVisual)
+{
+    m_spellVisual = spellVisual;
+    SetNeedClientUpdateForTargets();
 }
 
 Unit* Aura::GetCaster() const
@@ -956,9 +981,6 @@ void Aura::RefreshTimers(bool resetPeriodicTimer)
     {
         // Pandemic doesn't reset periodic timer
         resetPeriodicTimer = false;
-
-        int32 pandemicDuration = CalculatePct(m_maxDuration, 30.f);
-        m_maxDuration = std::max(GetDuration(), std::min(pandemicDuration, GetDuration()) + m_maxDuration);
     }
 
     RefreshDuration();
@@ -1025,13 +1047,9 @@ void Aura::DropChargeDelayed(uint32 delay, AuraRemoveMode removeMode)
     // aura is already during delayed charge drop
     if (m_dropEvent)
         return;
-    // only units have events
-    Unit* owner = m_owner->ToUnit();
-    if (!owner)
-        return;
 
     m_dropEvent = new ChargeDropEvent(this, removeMode);
-    owner->m_Events.AddEvent(m_dropEvent, owner->m_Events.CalculateTime(Milliseconds(delay)));
+    m_owner->m_Events.AddEventAtOffset(m_dropEvent, Milliseconds(delay));
 }
 
 void Aura::SetStackAmount(uint8 stackAmount)
@@ -1251,13 +1269,12 @@ AuraKey Aura::GenerateKey(uint32& recalculateMask) const
     return key;
 }
 
-void Aura::SetLoadedState(int32 maxDuration, int32 duration, int32 charges, uint8 stackAmount, uint32 recalculateMask, int32* amount)
+void Aura::SetLoadedState(int32 maxDuration, int32 duration, int32 charges, uint32 recalculateMask, int32* amount)
 {
     m_maxDuration = maxDuration;
     m_duration = duration;
     m_procCharges = charges;
     m_isUsingCharges = m_procCharges != 0;
-    m_stackAmount = stackAmount;
     Unit* caster = GetCaster();
     for (AuraEffect* effect : GetAuraEffects())
     {
@@ -1857,16 +1874,13 @@ uint32 Aura::GetProcEffectMask(AuraApplication* aurApp, ProcEventInfo& eventInfo
     }
 
     // check if we have charges to proc with
-    if (IsUsingCharges())
-    {
-        if (!GetCharges())
-            return 0;
+    if (IsUsingCharges() && !GetCharges())
+        return 0;
 
-        if (procEntry->AttributesMask & PROC_ATTR_REQ_SPELLMOD)
-            if (Spell const* spell = eventInfo.GetProcSpell())
-                if (!spell->m_appliedMods.count(const_cast<Aura*>(this)))
-                    return 0;
-    }
+    if (procEntry->AttributesMask & PROC_ATTR_REQ_SPELLMOD && (IsUsingCharges() || procEntry->AttributesMask & PROC_ATTR_USE_STACKS_FOR_CHARGES))
+        if (Spell const* spell = eventInfo.GetProcSpell())
+            if (!spell->m_appliedMods.contains(const_cast<Aura*>(this)))
+                return 0;
 
     // check proc cooldown
     if (IsProcOnCooldown(now))
@@ -2010,15 +2024,13 @@ void Aura::TriggerProcOnEvent(uint32 procEffectMask, AuraApplication* aurApp, Pr
 
 float Aura::CalcPPMProcChance(Unit* actor) const
 {
-    using FSeconds = std::chrono::duration<float, Seconds::period>;
-
     // Formula see http://us.battle.net/wow/en/forum/topic/8197741003#1
     float ppm = m_spellInfo->CalcProcPPM(actor, GetCastItemLevel());
     float averageProcInterval = 60.0f / ppm;
 
     TimePoint currentTime = GameTime::Now();
-    float secondsSinceLastAttempt = std::min(std::chrono::duration_cast<FSeconds>(currentTime - m_lastProcAttemptTime).count(), 10.0f);
-    float secondsSinceLastProc = std::min(std::chrono::duration_cast<FSeconds>(currentTime - m_lastProcSuccessTime).count(), 1000.0f);
+    float secondsSinceLastAttempt = std::min(duration_cast<FloatSeconds>(currentTime - m_lastProcAttemptTime).count(), 10.0f);
+    float secondsSinceLastProc = std::min(duration_cast<FloatSeconds>(currentTime - m_lastProcSuccessTime).count(), 1000.0f);
 
     float chance = std::max(1.0f, 1.0f + ((secondsSinceLastProc / averageProcInterval - 1.5f) * 3.0f)) * ppm * secondsSinceLastAttempt / 60.0f;
     RoundToInterval(chance, 0.0f, 1.0f);

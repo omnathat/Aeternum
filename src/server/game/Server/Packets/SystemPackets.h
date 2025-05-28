@@ -15,8 +15,8 @@
  * with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef SystemPackets_h__
-#define SystemPackets_h__
+#ifndef TRINITYCORE_SYSTEM_PACKETS_H
+#define TRINITYCORE_SYSTEM_PACKETS_H
 
 #include "Packet.h"
 #include "ObjectGuid.h"
@@ -27,6 +27,40 @@ namespace WorldPackets
 {
     namespace System
     {
+        struct SocialQueueConfig
+        {
+            bool ToastsDisabled = false;
+            float ToastDuration = 0.0f;
+            float DelayDuration = 0.0f;
+            float QueueMultiplier = 0.0f;
+            float PlayerMultiplier = 0.0f;
+            float PlayerFriendValue = 0.0f;
+            float PlayerGuildValue = 0.0f;
+            float ThrottleInitialThreshold = 0.0f;
+            float ThrottleDecayTime = 0.0f;
+            float ThrottlePrioritySpike = 0.0f;
+            float ThrottleMinThreshold = 0.0f;
+            float ThrottlePvPPriorityNormal = 0.0f;
+            float ThrottlePvPPriorityLow = 0.0f;
+            float ThrottlePvPHonorThreshold = 0.0f;
+            float ThrottleLfgListPriorityDefault = 0.0f;
+            float ThrottleLfgListPriorityAbove = 0.0f;
+            float ThrottleLfgListPriorityBelow = 0.0f;
+            float ThrottleLfgListIlvlScalingAbove = 0.0f;
+            float ThrottleLfgListIlvlScalingBelow = 0.0f;
+            float ThrottleRfPriorityAbove = 0.0f;
+            float ThrottleRfIlvlScalingAbove = 0.0f;
+            float ThrottleDfMaxItemLevel = 0.0f;
+            float ThrottleDfBestPriority = 0.0f;
+        };
+
+        struct SessionAlertConfig
+        {
+            int32 Delay       = 0;
+            int32 Period      = 0;
+            int32 DisplayTime = 0;
+        };
+
         struct SavedThrottleObjectState
         {
             uint32 MaxTries               = 0;
@@ -45,6 +79,13 @@ namespace WorldPackets
             SavedThrottleObjectState ThrottleState;
         };
 
+        struct SquelchInfo
+        {
+            bool IsSquelched = false;
+            ObjectGuid BnetAccountGuid;
+            ObjectGuid GuildGuid;
+        };
+
         struct GameRuleValuePair
         {
             int32 Rule = 0;
@@ -55,47 +96,6 @@ namespace WorldPackets
         class FeatureSystemStatus final : public ServerPacket
         {
         public:
-            struct SessionAlertConfig
-            {
-                int32 Delay       = 0;
-                int32 Period      = 0;
-                int32 DisplayTime = 0;
-            };
-
-            struct SocialQueueConfig
-            {
-                bool ToastsDisabled = false;
-                float ToastDuration = 0.0f;
-                float DelayDuration = 0.0f;
-                float QueueMultiplier = 0.0f;
-                float PlayerMultiplier = 0.0f;
-                float PlayerFriendValue = 0.0f;
-                float PlayerGuildValue = 0.0f;
-                float ThrottleInitialThreshold = 0.0f;
-                float ThrottleDecayTime = 0.0f;
-                float ThrottlePrioritySpike = 0.0f;
-                float ThrottleMinThreshold = 0.0f;
-                float ThrottlePvPPriorityNormal = 0.0f;
-                float ThrottlePvPPriorityLow = 0.0f;
-                float ThrottlePvPHonorThreshold = 0.0f;
-                float ThrottleLfgListPriorityDefault = 0.0f;
-                float ThrottleLfgListPriorityAbove = 0.0f;
-                float ThrottleLfgListPriorityBelow = 0.0f;
-                float ThrottleLfgListIlvlScalingAbove = 0.0f;
-                float ThrottleLfgListIlvlScalingBelow = 0.0f;
-                float ThrottleRfPriorityAbove = 0.0f;
-                float ThrottleRfIlvlScalingAbove = 0.0f;
-                float ThrottleDfMaxItemLevel = 0.0f;
-                float ThrottleDfBestPriority = 0.0f;
-            };
-
-            struct SquelchInfo
-            {
-                bool IsSquelched = false;
-                ObjectGuid BnetAccountGuid;
-                ObjectGuid GuildGuid;
-            };
-
             struct RafSystemFeatureInfo
             {
                 bool Enabled = false;
@@ -114,7 +114,7 @@ namespace WorldPackets
                 int32 UsedTriesPerMessage = 0;
             };
 
-            FeatureSystemStatus() : ServerPacket(SMSG_FEATURE_SYSTEM_STATUS, 200) { }
+            explicit FeatureSystemStatus() : ServerPacket(SMSG_FEATURE_SYSTEM_STATUS, 200) { }
 
             WorldPacket const* Write() override;
 
@@ -129,16 +129,16 @@ namespace WorldPackets
             int32 CfgRealmRecID                          = 0;
             uint32 CommercePricePollTimeSeconds          = 0;
             int64 RedeemForBalanceAmount                 = 0;
-            uint32 BpayStorePurchaseTimeout              = 30000;
-            uint32 ClubsPresenceDelay                    = 30000;
-            uint32 ClubPresenceUnsubscribeDelay          = 30000; ///< Timer for updating club presence when communities ui frame is hidden
+            uint32 BpayStorePurchaseTimeout              = 0;
+            uint32 ClubsPresenceDelay                    = 0;
+            uint32 ClubPresenceUnsubscribeDelay          = 0; ///< Timer for updating club presence when communities ui frame is hidden
             uint32 KioskSessionDurationMinutes           = 0;
             int32 ContentSetID                           = 0; ///< Currently active Classic season
             int16 MaxPlayerGuidLookupsPerRequest         = 50;
             int16 NameLookupTelemetryInterval            = 600;
             Duration<Seconds, uint32> NotFoundCacheTimeSeconds = 10s;
             bool ItemRestorationButtonEnabled        = false;
-            bool CharUndeleteEnabled                 = true; ///< Implemented
+            bool CharUndeleteEnabled                 = false; ///< Implemented
             bool BpayStoreDisabledByParentalControls = false;
             bool CommerceServerEnabled               = true;
             bool VeteranTokenRedeemWillKick          = false;
@@ -147,19 +147,19 @@ namespace WorldPackets
             bool TutorialEnabled                     = false;
             bool NPETutorialsEnabled                 = false;
             bool KioskModeEnabled                    = false;
-            bool CompetitiveModeEnabled              = false;
+            bool CompetitiveModeEnabled              = true;
             bool RedeemForBalanceAvailable           = false;
             bool WarModeEnabled                      = true;
-            bool CommunitiesEnabled                  = false;
-            bool BnetGroupsEnabled                   = false;
-            bool CharacterCommunitiesEnabled         = false;
+            bool CommunitiesEnabled                  = true;
+            bool BnetGroupsEnabled                   = true;
+            bool CharacterCommunitiesEnabled         = true;
             bool ClubPresenceAllowSubscribeAll       = false;
             bool VoiceChatParentalDisabled           = false;
             bool VoiceChatParentalMuted              = false;
             bool QuestSessionEnabled                 = false;
             bool IsChatMuted                         = false;
-            bool ClubFinderEnabled                   = false;
-            bool CommunityFinderEnabled              = false;
+            bool ClubFinderEnabled                   = true;
+            bool CommunityFinderEnabled              = true;
             bool BrowserCrashReporterEnabled         = false;
             bool SpeakForMeAllowed                   = false;
             bool DoesAccountNeedAADCPrompt           = false;
@@ -167,19 +167,19 @@ namespace WorldPackets
             bool LfgRequireAuthenticatorEnabled      = false;
             bool ScriptsDisallowedForBeta            = false;
             bool TimerunningEnabled                  = false;
-            bool WarGamesEnabled                     = false; // classic only
+            bool WarGamesEnabled                     = true; // classic only
             bool IsPlayerContentTrackingEnabled      = false;
-            bool SellAllJunkEnabled                  = false;
+            bool SellAllJunkEnabled                  = true;
             bool GroupFinderEnabled                  = true;  // classic only
             bool IsPremadeGroupEnabled               = true;  // classic only
-            bool UseActivePlayerDataQuestCompleted   = false; ///< Uses ActivePlayerData::QuestCompleted (legacy) to store completed quest bits instead of ActivePlayerData::BitVectors[9]
             bool GuildEventsEditsEnabled             = true;
             bool GuildTradeSkillsEnabled             = true;
             bool BNSendWhisperUseV2Services          = true;  ///< BNSendWhisper will send to v2.WhisperService instead of v1.NotificationService
             bool BNSendGameDataUseV2Services         = true;  ///< BNSendGameData will send to v2.NotificationService instead of v1.NotificationService
-            bool IsAccountCurrencyTransferEnabled    = false;
-            bool LobbyMatchmakerQueueFromMainlineEnabled = false;
-            bool CanSendLobbyMatchmakerPartyCustomizations = false;
+            bool IsAccountCurrencyTransferEnabled    = true;
+            bool LobbyMatchmakerQueueFromMainlineEnabled = true;
+            bool CanSendLobbyMatchmakerPartyCustomizations = true;
+            bool AddonProfilerEnabled                = false;
 
             SocialQueueConfig QuickJoinConfig;
             SquelchInfo Squelch;
@@ -189,6 +189,10 @@ namespace WorldPackets
             int32 RemainingTimerunningSeasonSeconds  = 0;
             std::string Unknown1027;                          // related to movement lua functions used by keybinds
             AddonChatThrottleParams AddonChatThrottle;
+            uint32 RealmPvpTypeOverride              = 0;       ///< Use Cfg_Configs value = 0, ForceEnabled = 1, ForceDisabled = 2
+            float AddonPerformanceMsgWarning         = 0.0f;
+            float AddonPerformanceMsgError           = 0.0f;
+            float AddonPerformanceMsgOverall         = 0.0f;
         };
 
         struct DebugTimeEventInfo
@@ -200,21 +204,21 @@ namespace WorldPackets
         class FeatureSystemStatusGlueScreen final : public ServerPacket
         {
         public:
-            FeatureSystemStatusGlueScreen() : ServerPacket(SMSG_FEATURE_SYSTEM_STATUS_GLUE_SCREEN, 64) { }
+            explicit FeatureSystemStatusGlueScreen() : ServerPacket(SMSG_FEATURE_SYSTEM_STATUS_GLUE_SCREEN, 64) { }
 
             WorldPacket const* Write() override;
 
             bool BpayStoreAvailable                  = true; // NYI
             bool BpayStoreDisabledByParentalControls = false; // NYI
             bool CharUndeleteEnabled                 = false;
-            bool BpayStoreEnabled                    = false; // NYI
-            bool CommerceServerEnabled               = false; // NYI
+            bool BpayStoreEnabled                    = true;
+            bool CommerceServerEnabled               = true; // NYI
             bool VeteranTokenRedeemWillKick          = false; // NYI
             bool WorldTokenRedeemWillKick            = false; // NYI
             bool ExpansionPreorderInStore            = false; // NYI
             bool KioskModeEnabled                    = false; // NYI
-            bool CompetitiveModeEnabled              = false; // NYI
-            bool BoostEnabled                        = false; // classic only
+            bool CompetitiveModeEnabled              = true; // NYI
+            bool BoostEnabled                        = true; // classic only
             bool TrialBoostEnabled                   = false; // NYI
             bool RedeemForBalanceAvailable           = false; // NYI
             bool PaidCharacterTransfersBetweenBnetAccountsEnabled = false;
@@ -239,7 +243,7 @@ namespace WorldPackets
             int64 RedeemForBalanceAmount             = 0;     // NYI
             int32 MaxCharactersOnThisRealm           = 0;
             uint32 BpayStorePurchaseTimeout          = 0;     // NYI
-            int32 ActiveBoostType                    = 0;     // NYI
+            int32 ActiveBoostType                    = 2;     // NYI
             int32 TrialBoostType                     = 0;     // NYI
             int32 MinimumExpansionLevel              = 0;
             int32 MaximumExpansionLevel              = 0;
@@ -254,14 +258,14 @@ namespace WorldPackets
             Optional<int32> LaunchDurationETA;
             std::vector<DebugTimeEventInfo> DebugTimeEvents;
             int32 MostRecentTimeEventID              = 0;
-            uint32 EventRealmQueues                  = 0;
+            uint32 EventRealmQueues                  = 7;
             std::string RealmHiddenAlert;
         };
 
         class SetTimeZoneInformation final : public ServerPacket
         {
         public:
-            SetTimeZoneInformation() : ServerPacket(SMSG_SET_TIME_ZONE_INFORMATION) { }
+            explicit SetTimeZoneInformation() : ServerPacket(SMSG_SET_TIME_ZONE_INFORMATION) { }
 
             WorldPacket const* Write() override;
 
@@ -272,4 +276,4 @@ namespace WorldPackets
     }
 }
 
-#endif // SystemPackets_h__
+#endif // TRINITYCORE_SYSTEM_PACKETS_H

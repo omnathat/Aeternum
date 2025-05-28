@@ -27,7 +27,6 @@
 #include "DisableMgr.h"
 #include "GridNotifiers.h"
 #include "Group.h"
-#include "IpAddress.h"
 #include "IPLocation.h"
 #include "Item.h"
 #include "ItemBonusMgr.h"
@@ -306,15 +305,10 @@ public:
             return false;
         }
 
-        if(!spell)
+        if (!spell)
             return false;
 
-        ObjectGuid castId = ObjectGuid::Create<HighGuid::Cast>(SPELL_CAST_SOURCE_NORMAL, target->GetMapId(), spell->Id, target->GetMap()->GenerateLowGuid<HighGuid::Cast>());
-        AuraCreateInfo createInfo(castId, spell, target->GetMap()->GetDifficultyID(), MAX_EFFECT_MASK, target);
-        createInfo.SetCaster(target);
-
-        Aura::TryRefreshStackOrCreate(createInfo);
-
+        target->AddAura(spell, MAX_EFFECT_MASK, target);
         return true;
     }
 
@@ -957,10 +951,7 @@ public:
                 return false;
 
             if (Player* caster = handler->GetSession()->GetPlayer())
-            {
-                ObjectGuid castId = ObjectGuid::Create<HighGuid::Cast>(SPELL_CAST_SOURCE_NORMAL, player->GetMapId(), SPELL_UNSTUCK_ID, player->GetMap()->GenerateLowGuid<HighGuid::Cast>());
-                Spell::SendCastResult(caster, spellInfo, { SPELL_UNSTUCK_VISUAL, 0 }, castId, SPELL_FAILED_CANT_DO_THAT_RIGHT_NOW);
-            }
+                caster->SendDirectMessage(WorldPackets::Misc::DisplayGameError(GameError::ERR_CLIENT_LOCKED_OUT).Write());
 
             return false;
         }
@@ -1982,8 +1973,6 @@ public:
             target->GetSession()->m_muteTime = 0;
         }
 
-        using namespace std::string_view_literals;
-
         LoginDatabasePreparedStatement* stmt = LoginDatabase.GetPreparedStatement(LOGIN_UPD_MUTE_TIME);
         stmt->setInt64(0, 0);
         stmt->setString(1, ""sv);
@@ -2207,7 +2196,7 @@ public:
 
         // non-melee damage
 
-        SpellNonMeleeDamage damageInfo(attacker, target, *spellInfo, { (*spellInfo)->GetSpellXSpellVisualId(handler->GetSession()->GetPlayer()), 0 }, (*spellInfo)->SchoolMask);
+        SpellNonMeleeDamage damageInfo(attacker, target, *spellInfo, { static_cast<uint32>((*spellInfo)->GetSpellXSpellVisualId(handler->GetSession()->GetPlayer())), 0 }, (*spellInfo)->SchoolMask);
         damageInfo.damage = damage;
         Unit::DealDamageMods(damageInfo.attacker, damageInfo.target, damageInfo.damage, &damageInfo.absorb);
         target->DealSpellDamage(&damageInfo, true);

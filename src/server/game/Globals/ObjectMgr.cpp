@@ -75,6 +75,7 @@
 #include "VMapManager2.h"
 #include "Vehicle.h"
 #include "World.h"
+#include "advstd.h"
 #include <G3D/g3dmath.h>
 #include <sstream>
 #include <Config.h> 
@@ -1533,7 +1534,7 @@ void ObjectMgr::LoadEquipmentTemplates()
                 continue;
             }
 
-            if (std::ranges::none_of(InventoryTypesEquipable, [dbcItem](InventoryType inventoryType) { return inventoryType == dbcItem->InventoryType; }))
+            if (!advstd::ranges::contains(InventoryTypesEquipable, dbcItem->InventoryType))
             {
                 TC_LOG_ERROR("sql.sql", "Item (ID={}) in creature_equip_template.ItemID{} for CreatureID = {} and ID = {} is not equipable in a hand, forced to 0.",
                     equipmentInfo.Items[i].ItemId, i + 1, entry, id);
@@ -3386,9 +3387,16 @@ void ObjectMgr::LoadItemTemplates()
 
     // Load item effects (spells)
     for (ItemXItemEffectEntry const* effectEntry : sItemXItemEffectStore)
+    {
         if (ItemTemplate* item = Trinity::Containers::MapGetValuePtr(_itemTemplateStore, effectEntry->ItemID))
+        {
             if (ItemEffectEntry const* effect = sItemEffectStore.LookupEntry(effectEntry->ItemEffectID))
-                item->Effects.push_back(effect);
+            {
+                auto itr = std::ranges::lower_bound(item->Effects, effect->LegacySlotIndex, {}, &ItemEffectEntry::LegacySlotIndex);
+                item->Effects.insert(itr, effect);
+            }
+        }
+    }
 
     TC_LOG_INFO("server.loading", ">> Loaded {} item templates in {} ms", _itemTemplateStore.size(), GetMSTimeDiffToNow(oldMSTime));
 }
@@ -3472,8 +3480,8 @@ void ObjectMgr::LoadVehicleTemplateAccessories()
 
     uint32 count = 0;
 
-    //                                                  0             1              2          3           4             5
-    QueryResult result = WorldDatabase.Query("SELECT `entry`, `accessory_entry`, `seat_id`, `minion`, `summontype`, `summontimer` FROM `vehicle_template_accessory`");
+    //                                                  0             1              2          3           4             5              6
+    QueryResult result = WorldDatabase.Query("SELECT `entry`, `accessory_entry`, `seat_id`, `minion`, `summontype`, `summontimer`, `RideSpellID` FROM `vehicle_template_accessory`");
 
     if (!result)
     {
@@ -3491,6 +3499,18 @@ void ObjectMgr::LoadVehicleTemplateAccessories()
         bool   isMinion     = fields[3].GetBool();
         uint8  summonType   = fields[4].GetUInt8();
         uint32 summonTimer  = fields[5].GetUInt32();
+
+        Optional<uint32> rideSpellId;
+        if (!fields[6].IsNull())
+        {
+            rideSpellId = fields[6].GetUInt32();
+
+            if (!sSpellMgr->GetSpellInfo(*rideSpellId, DIFFICULTY_NONE))
+            {
+                TC_LOG_ERROR("sql.sql", "Table `vehicle_template_accessory`: rideSpellId {} does not exist for entry {}.", *rideSpellId, entry);
+                continue;
+            }
+        }
 
         if (!GetCreatureTemplate(entry))
         {
@@ -3510,7 +3530,7 @@ void ObjectMgr::LoadVehicleTemplateAccessories()
             continue;
         }
 
-        _vehicleTemplateAccessoryStore[entry].push_back(VehicleAccessory(accessory, seatId, isMinion, summonType, summonTimer));
+        _vehicleTemplateAccessoryStore[entry].push_back(VehicleAccessory(accessory, seatId, isMinion, summonType, summonTimer, rideSpellId));
 
         ++count;
     }
@@ -3525,8 +3545,8 @@ void ObjectMgr::LoadVehicleTemplate()
 
     _vehicleTemplateStore.clear();
 
-    //                                               0           1
-    QueryResult result = WorldDatabase.Query("SELECT creatureId, despawnDelayMs FROM vehicle_template");
+    //                                               0           1               2
+    QueryResult result = WorldDatabase.Query("SELECT creatureId, despawnDelayMs, Pitch FROM vehicle_template");
 
     if (!result)
     {
@@ -3540,15 +3560,38 @@ void ObjectMgr::LoadVehicleTemplate()
 
         uint32 creatureId = fields[0].GetUInt32();
 
-        if (!GetCreatureTemplate(creatureId))
+        CreatureTemplate const* creatureInfo = GetCreatureTemplate(creatureId);
+        if (!creatureInfo)
         {
-            TC_LOG_ERROR("sql.sql", "Table `vehicle_template`: Vehicle {} does not exist.", creatureId);
+            TC_LOG_ERROR("sql.sql", "Table `vehicle_template`: Creature (Entry: {}) does not exist.", creatureId);
+            continue;
+        }
+
+        if (!creatureInfo->VehicleId)
+        {
+            TC_LOG_ERROR("sql.sql", "Table `vehicle_template`: Creature (Entry: {}) is not a vehicle.", creatureId);
             continue;
         }
 
         VehicleTemplate& vehicleTemplate = _vehicleTemplateStore[creatureId];
         vehicleTemplate.DespawnDelay = Milliseconds(fields[1].GetInt32());
 
+        if (!fields[2].IsNull())
+        {
+            VehicleEntry const* vehicle = sVehicleStore.LookupEntry(creatureInfo->VehicleId);
+            if (!vehicle)
+                continue;
+
+            float pitch = fields[2].GetFloat();
+            if (pitch < vehicle->PitchMin || pitch > vehicle->PitchMax)
+            {
+                TC_LOG_ERROR("sql.sql", "Table `vehicle_template`: Creature (Entry: {}) has invalid Pitch ({}).`. Ignoring",
+                    creatureId, pitch);
+                continue;
+            }
+
+            vehicleTemplate.Pitch = pitch;
+        }
     } while (result->NextRow());
 
     TC_LOG_INFO("server.loading", ">> Loaded {} Vehicle Template entries in {} ms", _vehicleTemplateStore.size(), GetMSTimeDiffToNow(oldMSTime));
@@ -3562,8 +3605,8 @@ void ObjectMgr::LoadVehicleAccessories()
 
     uint32 count = 0;
 
-    //                                                  0             1             2          3           4             5
-    QueryResult result = WorldDatabase.Query("SELECT `guid`, `accessory_entry`, `seat_id`, `minion`, `summontype`, `summontimer` FROM `vehicle_accessory`");
+    //                                                  0             1             2          3           4             5              6
+    QueryResult result = WorldDatabase.Query("SELECT `guid`, `accessory_entry`, `seat_id`, `minion`, `summontype`, `summontimer`, `RideSpellID` FROM `vehicle_accessory`");
 
     if (!result)
     {
@@ -3582,13 +3625,25 @@ void ObjectMgr::LoadVehicleAccessories()
         uint8  uiSummonType = fields[4].GetUInt8();
         uint32 uiSummonTimer= fields[5].GetUInt32();
 
+        Optional<uint32> rideSpellId;
+        if (!fields[6].IsNull())
+        {
+            rideSpellId = fields[6].GetUInt32();
+
+            if (!sSpellMgr->GetSpellInfo(*rideSpellId, DIFFICULTY_NONE))
+            {
+                TC_LOG_ERROR("sql.sql", "Table `vehicle_accessory`: rideSpellId {} does not exist for guid {}.", *rideSpellId, uiGUID);
+                continue;
+            }
+        }
+
         if (!GetCreatureTemplate(uiAccessory))
         {
             TC_LOG_ERROR("sql.sql", "Table `vehicle_accessory`: Accessory {} does not exist.", uiAccessory);
             continue;
         }
 
-        _vehicleAccessoryStore[uiGUID].push_back(VehicleAccessory(uiAccessory, uiSeat, bMinion, uiSummonType, uiSummonTimer));
+        _vehicleAccessoryStore[uiGUID].push_back(VehicleAccessory(uiAccessory, uiSeat, bMinion, uiSummonType, uiSummonTimer, rideSpellId));
 
         ++count;
     }
@@ -4562,33 +4617,33 @@ void ObjectMgr::LoadQuests()
         "ID, QuestType, QuestPackageID, ContentTuningID, QuestSortID, QuestInfoID, SuggestedGroupNum, RewardNextQuest, RewardXPDifficulty, RewardXPMultiplier, "
         //10                    11                     12                13           14           15               16
         "RewardMoneyDifficulty, RewardMoneyMultiplier, RewardBonusMoney, RewardSpell, RewardHonor, RewardKillHonor, StartItem, "
-        //17                         18                          19                        20     21       22
-        "RewardArtifactXPDifficulty, RewardArtifactXPMultiplier, RewardArtifactCategoryID, Flags, FlagsEx, FlagsEx2, "
-        //23          24             25         26                 27           28             29         30
+        //17                         18                          19                        20     21       22        23
+        "RewardArtifactXPDifficulty, RewardArtifactXPMultiplier, RewardArtifactCategoryID, Flags, FlagsEx, FlagsEx2, FlagsEx3, "
+        //24          25             26         27                 28           29             30         31
         "RewardItem1, RewardAmount1, ItemDrop1, ItemDropQuantity1, RewardItem2, RewardAmount2, ItemDrop2, ItemDropQuantity2, "
-        //31          32             33         34                 35           36             37         38
+        //32          33             34         35                 36           37             38         39
         "RewardItem3, RewardAmount3, ItemDrop3, ItemDropQuantity3, RewardItem4, RewardAmount4, ItemDrop4, ItemDropQuantity4, "
-        //39                  40                         41                          42                   43                         44
+        //40                  41                         42                          43                   44                         45
         "RewardChoiceItemID1, RewardChoiceItemQuantity1, RewardChoiceItemDisplayID1, RewardChoiceItemID2, RewardChoiceItemQuantity2, RewardChoiceItemDisplayID2, "
-        //45                  46                         47                          48                   49                         50
+        //46                  47                         48                          49                   50                         51
         "RewardChoiceItemID3, RewardChoiceItemQuantity3, RewardChoiceItemDisplayID3, RewardChoiceItemID4, RewardChoiceItemQuantity4, RewardChoiceItemDisplayID4, "
-        //51                  52                         53                          54                   55                         56
+        //52                  53                         54                          55                   56                         57
         "RewardChoiceItemID5, RewardChoiceItemQuantity5, RewardChoiceItemDisplayID5, RewardChoiceItemID6, RewardChoiceItemQuantity6, RewardChoiceItemDisplayID6, "
-        //57           58    59    60           61           62                 63                 64
+        //58           59    60    61           62           63                 64                 65
         "POIContinent, POIx, POIy, POIPriority, RewardTitle, RewardArenaPoints, RewardSkillLineID, RewardNumSkillUps, "
-        //65            66                  67                         68
+        //66            67                  68                         69
         "PortraitGiver, PortraitGiverMount, PortraitGiverModelSceneID, PortraitTurnIn, "
-        //69               70                   71                      72                   73                74                   75                      76
+        //70               71                   72                      73                   74                75                   76                      77
         "RewardFactionID1, RewardFactionValue1, RewardFactionOverride1, RewardFactionCapIn1, RewardFactionID2, RewardFactionValue2, RewardFactionOverride2, RewardFactionCapIn2, "
-        //77               78                   79                      80                   81                82                   83                      84
+        //78               79                   80                      81                   82                83                   84                      85
         "RewardFactionID3, RewardFactionValue3, RewardFactionOverride3, RewardFactionCapIn3, RewardFactionID4, RewardFactionValue4, RewardFactionOverride4, RewardFactionCapIn4, "
-        //85               86                   87                      88                   89
+        //86               87                   88                      89                   90
         "RewardFactionID5, RewardFactionValue5, RewardFactionOverride5, RewardFactionCapIn5, RewardFactionFlags, "
-        //90                91                  92                 93                  94                 95                  96                 97
+        //91                92                  93                 94                  95                 96                  97                 98
         "RewardCurrencyID1, RewardCurrencyQty1, RewardCurrencyID2, RewardCurrencyQty2, RewardCurrencyID3, RewardCurrencyQty3, RewardCurrencyID4, RewardCurrencyQty4, "
-        //98                 99                  100          101          102             103               104        105                  106
+        //99                 100                 101          102          103             104               105        106                  107
         "AcceptedSoundKitID, CompleteSoundKitID, AreaGroupID, TimeAllowed, AllowableRaces, ResetByScheduler, Expansion, ManagedWorldStateID, QuestSessionBonus, "
-        //107      108             109               110              111                112                113                 114                 115
+        //108      109             110               111              112                113                114                 115                 116
         "LogTitle, LogDescription, QuestDescription, AreaDescription, PortraitGiverText, PortraitGiverName, PortraitTurnInText, PortraitTurnInName, QuestCompletionLog "
         "FROM quest_template");
     if (!result)
@@ -4607,7 +4662,7 @@ void ObjectMgr::LoadQuests()
         Field* fields = result->Fetch();
 
         uint32 questId = fields[0].GetUInt32();
-        auto itr = _questTemplates.emplace(std::piecewise_construct, std::forward_as_tuple(questId), std::forward_as_tuple(new Quest(fields))).first;
+        auto itr = _questTemplates.emplace(std::piecewise_construct, std::forward_as_tuple(questId), std::forward_as_tuple(new Quest(result))).first;
         itr->second->_weakRef = itr->second;
         if (itr->second->IsAutoPush())
             _questTemplatesAutoPush.push_back(itr->second.get());
@@ -4690,7 +4745,7 @@ void ObjectMgr::LoadQuests()
                 if (itr != _questTemplates.end())
                     (itr->second.get()->*loader.LoaderFunction)(fields);
                 else
-                    TC_LOG_ERROR("server.loading", "Table `{}` has data for quest {} but such quest does not exist", loader.TableName, questId);
+                    TC_LOG_ERROR("sql.sql", "Table `{}` has data for quest {} but such quest does not exist", loader.TableName, questId);
             } while (result->NextRow());
         }
     }
@@ -4700,9 +4755,7 @@ void ObjectMgr::LoadQuests()
     result = WorldDatabase.Query("SELECT v.ID AS vID, o.ID AS oID, o.QuestID, v.Index, v.VisualEffect FROM quest_visual_effect AS v LEFT JOIN quest_objectives AS o ON v.ID = o.ID ORDER BY v.Index DESC");
 
     if (!result)
-    {
-        TC_LOG_ERROR("server.loading", ">> Loaded 0 quest visual effects. DB table `quest_visual_effect` is empty.");
-    }
+        TC_LOG_INFO("server.loading", ">> Loaded 0 quest visual effects. DB table `quest_visual_effect` is empty.");
     else
     {
         do
@@ -4713,14 +4766,14 @@ void ObjectMgr::LoadQuests()
 
             if (!vID)
             {
-                TC_LOG_ERROR("server.loading", "Table `quest_visual_effect` has visual effect for null objective id");
+                TC_LOG_ERROR("sql.sql", "Table `quest_visual_effect` has visual effect for null objective id");
                 continue;
             }
 
             // objID will be null if match for table join is not found
             if (vID != oID)
             {
-                TC_LOG_ERROR("server.loading", "Table `quest_visual_effect` has visual effect for objective {} but such objective does not exist.", vID);
+                TC_LOG_ERROR("sql.sql", "Table `quest_visual_effect` has visual effect for objective {} but such objective does not exist.", vID);
                 continue;
             }
 
@@ -6720,8 +6773,8 @@ uint32 ObjectMgr::GetNearestTaxiNode(float x, float y, float z, uint32 mapid, ui
         if (!node || node->ContinentID != mapid || !isVisibleForFaction(node) || node->GetFlags().HasFlag(TaxiNodeFlags::IgnoreForFindNearest))
             continue;
 
-        uint32 field   = uint32((node->ID - 1) / 8);
-        uint32 submask = 1 << ((node->ID - 1) % 8);
+        uint32 field = uint32((node->ID - 1) / (sizeof(TaxiMask::value_type) * 8));
+        TaxiMask::value_type submask = TaxiMask::value_type(1 << ((node->ID - 1) % (sizeof(TaxiMask::value_type) * 8)));
 
         // skip not taxi network nodes
         if ((sTaxiNodesMask[field] & submask) == 0)
@@ -7151,8 +7204,6 @@ bool ObjectMgr::AddGraveyardLink(uint32 id, uint32 zoneId, uint32 team, bool per
         // Store graveyard condition if team is set
         if (team != 0)
         {
-            using namespace std::string_view_literals;
-
             WorldDatabasePreparedStatement* conditionStmt = WorldDatabase.GetPreparedStatement(WORLD_INS_CONDITION);
             conditionStmt->setUInt32(0, CONDITION_SOURCE_TYPE_GRAVEYARD); // SourceTypeOrReferenceId
             conditionStmt->setUInt32(1, zoneId); // SourceGroup
@@ -7411,14 +7462,14 @@ void ObjectMgr::SetHighestGuids()
 
     result = CharacterDatabase.Query("SELECT MAX(guid) FROM item_instance");
     if (result)
-        GetGuidSequenceGenerator(HighGuid::Item).Set((*result)[0].GetUInt64() + 1);
+        GetGenerator<HighGuid::Item>().Set((*result)[0].GetUInt64() + 1);
 
     // Cleanup other tables from nonexistent guids ( >= _hiItemGuid)
-    CharacterDatabase.PExecute("DELETE FROM character_inventory WHERE item >= '{}'", GetGuidSequenceGenerator(HighGuid::Item).GetNextAfterMaxUsed());    // One-time query
-    CharacterDatabase.PExecute("DELETE FROM mail_items WHERE item_guid >= '{}'", GetGuidSequenceGenerator(HighGuid::Item).GetNextAfterMaxUsed());        // One-time query
+    CharacterDatabase.PExecute("DELETE FROM character_inventory WHERE item >= '{}'", GetGenerator<HighGuid::Item>().GetNextAfterMaxUsed());     // One-time query
+    CharacterDatabase.PExecute("DELETE FROM mail_items WHERE item_guid >= '{}'", GetGenerator<HighGuid::Item>().GetNextAfterMaxUsed());         // One-time query
     CharacterDatabase.PExecute("DELETE a, ab, ai FROM auctionhouse a LEFT JOIN auction_bidders ab ON ab.auctionId = a.id LEFT JOIN auction_items ai ON ai.auctionId = a.id WHERE ai.itemGuid >= '{}'",
-        GetGuidSequenceGenerator(HighGuid::Item).GetNextAfterMaxUsed());       // One-time query
-    CharacterDatabase.PExecute("DELETE FROM guild_bank_item WHERE item_guid >= '{}'", GetGuidSequenceGenerator(HighGuid::Item).GetNextAfterMaxUsed());   // One-time query
+        GetGenerator<HighGuid::Item>().GetNextAfterMaxUsed());                                                                                  // One-time query
+    CharacterDatabase.PExecute("DELETE FROM guild_bank_item WHERE item_guid >= '{}'", GetGenerator<HighGuid::Item>().GetNextAfterMaxUsed());    // One-time query
 
     result = WorldDatabase.Query("SELECT MAX(guid) FROM transports");
     if (result)
@@ -7463,11 +7514,7 @@ void ObjectMgr::SetHighestGuids()
 
 ObjectGuidGenerator& ObjectMgr::GetGuidSequenceGenerator(HighGuid high)
 {
-    auto itr = _guidGenerators.find(high);
-    if (itr == _guidGenerators.end())
-        itr = _guidGenerators.insert(std::make_pair(high, std::make_unique<ObjectGuidGenerator>(high))).first;
-
-    return *itr->second;
+    return _guidGenerators.try_emplace(high, high).first->second;
 }
 
 uint32 ObjectMgr::GenerateAuctionID()
@@ -9986,7 +10033,7 @@ void ObjectMgr::LoadGossipMenuItems()
             gMenuItem.GossipNpcOptionID = fields[10].GetInt32();
 
         gMenuItem.BoxCoded              = fields[11].GetBool();
-        gMenuItem.BoxMoney              = fields[12].GetUInt32();
+        gMenuItem.BoxMoney              = fields[12].GetUInt64();
         gMenuItem.BoxText               = fields[13].GetString();
         gMenuItem.BoxBroadcastTextID    = fields[14].GetUInt32();
         if (!fields[15].IsNull())
@@ -11486,8 +11533,7 @@ void ObjectMgr::LoadPlayerChoices()
                 continue;
             }
 
-            auto responseItr = std::find_if(choice->Responses.begin(), choice->Responses.end(),
-                [responseId](PlayerChoiceResponse const& playerChoiceResponse) { return playerChoiceResponse.ResponseId == responseId; });
+            auto responseItr = std::ranges::find(choice->Responses, responseId, &PlayerChoiceResponse::ResponseId);
             if (responseItr == choice->Responses.end())
             {
                 TC_LOG_ERROR("sql.sql", "Table `playerchoice_response_reward` references non-existing ResponseId: {} for ChoiceId {}, skipped", responseId, choiceId);
@@ -11552,8 +11598,7 @@ void ObjectMgr::LoadPlayerChoices()
                 continue;
             }
 
-            auto responseItr = std::find_if(choice->Responses.begin(), choice->Responses.end(),
-                [responseId](PlayerChoiceResponse const& playerChoiceResponse) { return playerChoiceResponse.ResponseId == responseId; });
+            auto responseItr = std::ranges::find(choice->Responses, responseId, &PlayerChoiceResponse::ResponseId);
             if (responseItr == choice->Responses.end())
             {
                 TC_LOG_ERROR("sql.sql", "Table `playerchoice_response_reward_item` references non-existing ResponseId: {} for ChoiceId {}, skipped", responseId, choiceId);
@@ -11598,8 +11643,7 @@ void ObjectMgr::LoadPlayerChoices()
                 continue;
             }
 
-            auto responseItr = std::find_if(choice->Responses.begin(), choice->Responses.end(),
-                [responseId](PlayerChoiceResponse const& playerChoiceResponse) { return playerChoiceResponse.ResponseId == responseId; });
+            auto responseItr = std::ranges::find(choice->Responses, responseId, &PlayerChoiceResponse::ResponseId);
             if (responseItr == choice->Responses.end())
             {
                 TC_LOG_ERROR("sql.sql", "Table `playerchoice_response_reward_currency` references non-existing ResponseId: {} for ChoiceId {}, skipped", responseId, choiceId);
@@ -11644,8 +11688,7 @@ void ObjectMgr::LoadPlayerChoices()
                 continue;
             }
 
-            auto responseItr = std::find_if(choice->Responses.begin(), choice->Responses.end(),
-                [responseId](PlayerChoiceResponse const& playerChoiceResponse) { return playerChoiceResponse.ResponseId == responseId; });
+            auto responseItr = std::ranges::find(choice->Responses, responseId, &PlayerChoiceResponse::ResponseId);
             if (responseItr == choice->Responses.end())
             {
                 TC_LOG_ERROR("sql.sql", "Table `playerchoice_response_reward_faction` references non-existing ResponseId: {} for ChoiceId {}, skipped", responseId, choiceId);
@@ -11694,8 +11737,7 @@ void ObjectMgr::LoadPlayerChoices()
                 continue;
             }
 
-            auto responseItr = std::find_if(choice->Responses.begin(), choice->Responses.end(),
-                [responseId](PlayerChoiceResponse const& playerChoiceResponse) { return playerChoiceResponse.ResponseId == responseId; });
+            auto responseItr = std::ranges::find(choice->Responses, responseId, &PlayerChoiceResponse::ResponseId);
             if (responseItr == choice->Responses.end())
             {
                 TC_LOG_ERROR("sql.sql", "Table `playerchoice_response_reward_item_choice` references non-existing ResponseId: {} for ChoiceId {}, skipped", responseId, choiceId);
@@ -11722,7 +11764,7 @@ void ObjectMgr::LoadPlayerChoices()
         } while (rewards->NextRow());
     }
 
-    if (QueryResult mawPowersResult = WorldDatabase.Query("SELECT ChoiceId, ResponseId, TypeArtFileID, Rarity, RarityColor, SpellID, MaxStacks FROM playerchoice_response_maw_power"))
+    if (QueryResult mawPowersResult = WorldDatabase.Query("SELECT ChoiceId, ResponseId, TypeArtFileID, Rarity, SpellID, MaxStacks FROM playerchoice_response_maw_power"))
     {
         do
         {
@@ -11737,11 +11779,7 @@ void ObjectMgr::LoadPlayerChoices()
                 continue;
             }
 
-            auto responseItr = std::find_if(choice->Responses.begin(), choice->Responses.end(),
-                [responseId](PlayerChoiceResponse const& playerChoiceResponse)
-            {
-                return playerChoiceResponse.ResponseId == responseId;
-            });
+            auto responseItr = std::ranges::find(choice->Responses, responseId, &PlayerChoiceResponse::ResponseId);
             if (responseItr == choice->Responses.end())
             {
                 TC_LOG_ERROR("sql.sql", "Table `playerchoice_response_maw_power` references non-existing ResponseId: {} for ChoiceId {}, skipped", responseId, choiceId);
@@ -11752,10 +11790,8 @@ void ObjectMgr::LoadPlayerChoices()
             mawPower.TypeArtFileID = fields[2].GetInt32();
             if (!fields[3].IsNull())
                 mawPower.Rarity = fields[3].GetInt32();
-            if (!fields[4].IsNull())
-                mawPower.RarityColor = fields[4].GetUInt32();
-            mawPower.SpellID = fields[5].GetInt32();
-            mawPower.MaxStacks = fields[6].GetInt32();
+            mawPower.SpellID = fields[4].GetInt32();
+            mawPower.MaxStacks = fields[5].GetInt32();
 
             ++mawPowersCount;
 
@@ -12033,13 +12069,9 @@ SpawnTrackingTemplateData const* ObjectMgr::GetSpawnTrackingData(uint32 spawnTra
 
 bool ObjectMgr::IsQuestObjectiveForSpawnTracking(uint32 spawnTrackingId, uint32 questObjectiveId) const
 {
-    auto itr = _spawnTrackingQuestObjectiveStore.find(spawnTrackingId);
-    if (itr != _spawnTrackingQuestObjectiveStore.end())
-    {
-        std::vector<QuestObjective const*> const* questObjectiveList = &itr->second;
-        if (std::ranges::find(*questObjectiveList, questObjectiveId, &QuestObjective::ID) != (*questObjectiveList).end())
-            return true;
-    }
+    if (std::vector<QuestObjective const*> const* questObjectiveList = Trinity::Containers::MapGetValuePtr(_spawnTrackingQuestObjectiveStore, spawnTrackingId))
+        return advstd::ranges::contains(*questObjectiveList, questObjectiveId, &QuestObjective::ID);
+
     return false;
 }
 

@@ -148,7 +148,7 @@ void WorldSession::HandleWhoOpcode(WorldPackets::Who::WhoRequestPkt& whoRequest)
     uint32 gmLevelInWhoList  = sWorld->getIntConfig(CONFIG_GM_LEVEL_IN_WHO_LIST);
 
     WorldPackets::Who::WhoResponsePkt response;
-    response.RequestID = whoRequest.RequestID;
+    response.Token = whoRequest.Token;
 
     WhoListInfoVector const& whoList = sWhoListStorageMgr->GetWhoList();
     for (WhoListPlayerInfo const& target : whoList)
@@ -724,7 +724,7 @@ void WorldSession::HandleUpdateAccountData(WorldPackets::ClientConfig::UserClien
     dest.resize(packet.Size);
 
     uLongf realSize = packet.Size;
-    if (uncompress(reinterpret_cast<Bytef*>(dest.data()), &realSize, packet.CompressedData.contents(), packet.CompressedData.size()) != Z_OK)
+    if (uncompress(reinterpret_cast<Bytef*>(dest.data()), &realSize, packet.CompressedData.data(), packet.CompressedData.size()) != Z_OK)
     {
         TC_LOG_ERROR("network", "UAD: Failed to decompress account data");
         return;
@@ -752,7 +752,7 @@ void WorldSession::HandleRequestAccountData(WorldPackets::ClientConfig::RequestA
 
     data.CompressedData.resize(destSize);
 
-    if (data.Size && compress(data.CompressedData.contents(), &destSize, (uint8 const*)adata->Data.c_str(), data.Size) != Z_OK)
+    if (data.Size && compress(data.CompressedData.data(), &destSize, (uint8 const*)adata->Data.c_str(), data.Size) != Z_OK)
     {
         TC_LOG_ERROR("network", "RAD: Failed to compress account data");
         return;
@@ -1222,4 +1222,70 @@ void WorldSession::HandleQueryCountdownTimer(WorldPackets::Misc::QueryCountdownT
     startTimer.TotalTime = info->GetTotalTime();
 
     _player->SendDirectMessage(startTimer.Write());
+}
+
+void WorldSession::HandleOverrideScreenFlash(WorldPackets::Misc::OverrideScreenFlash& overrideScreenFlash)
+{
+    _player->SetOverrideScreenFlash(overrideScreenFlash.BlackScreenOrRedScreen);
+}
+
+void WorldSession::HandleAccountNotificationAcknowledge(WorldPackets::Misc::AccountNotificationAcknowledge& packet)
+{
+}
+
+void WorldSession::HandleShowTradeSkill(WorldPackets::Misc::ShowTradeSkill& packet)
+{
+    if (!sSkillLineStore.LookupEntry(packet.SkillLineID) || !sSpellMgr->GetSpellInfo(packet.SpellID, DIFFICULTY_NONE))
+        return;
+
+    Player* player = ObjectAccessor::FindPlayer(packet.PlayerGUID);
+    if (!player)
+        return;
+
+    std::set<uint32> relatedSkills;
+    relatedSkills.insert(packet.SkillLineID);
+
+    for (SkillLineEntry const* skillLine : sSkillLineStore)
+    {
+        if (skillLine->ParentSkillLineID != packet.SkillLineID)
+            continue;
+
+        if (!player->HasSkill(skillLine->ParentSkillLineID))
+            continue;
+
+        relatedSkills.insert(skillLine->ParentSkillLineID);
+    }
+
+    std::set<uint32> profSpells;
+    for (auto const& v : player->GetSpellMap())
+    {
+        if (v.second.state == PLAYERSPELL_REMOVED)
+            continue;
+
+        if (!v.second.active || v.second.disabled)
+            continue;
+
+        for (auto const& s : relatedSkills)
+            if (IsPartOfSkillLine(s, v.first))
+                profSpells.insert(v.first);
+    }
+
+    if (profSpells.empty())
+        return;
+
+    WorldPackets::Misc::ShowTradeSkillResponse response;
+    response.PlayerGUID = packet.PlayerGUID;
+    response.SpellId = packet.SpellID;
+
+    for (uint32 const& x : profSpells)
+        response.KnownAbilitySpellIDs.push_back(x);
+
+    for (uint32 const& v : relatedSkills)
+    {
+        response.SkillLineIDs.push_back(v);
+        response.SkillRanks.push_back(player->GetSkillValue(v));
+        response.SkillMaxRanks.push_back(player->GetMaxSkillValue(v));
+    }
+
+    _player->SendDirectMessage(response.Write());
 }
